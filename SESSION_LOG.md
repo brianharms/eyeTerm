@@ -49,6 +49,85 @@ Fix camera preview overlay alignment in eyeTerm (GazeTerminal) — the green fac
 
 ---
 
+## Session — 2026-02-18 16:30
+
+### Goal
+Continue gaze tracking pipeline development — fix bugs, add independent head/pupil calibration, add debug visualization tools, fix iTerm AppleScript authorization, add voice audio waveform visualizer, and push to GitHub.
+
+### Accomplished
+- **Camera restart fix**: `EyeTermTracker.stop()` now removes all inputs/outputs from AVCaptureSession so the camera can restart cleanly
+- **Quadrant driven by smoothed point**: Changed MediaPipe backend to always use `ScreenQuadrant.from(normalizedPoint: smoothedPoint)` instead of letting Python's raw quadrant override
+- **Vertical tracking fix (Apple Vision)**: Changed pitch normalization divisor from 0.6 to 0.3
+- **Head pose fix (Apple Vision)**: Added two-step Vision request — `VNDetectFaceRectanglesRequest` first for reliable yaw/pitch, then `VNDetectFaceLandmarksRequest` with `inputFaceObservations`
+- **Slider now functional on both backends**: MediaPipe fusion moved from Python (hardcoded 0.85) to Swift side using raw head_yaw/head_pitch/iris_ratio_x/iris_ratio_y components
+- **Multiple gaze inversion corrections** across both backends (head and pupil, took several iterations)
+  - Apple: `headX = 0.5 - (yaw / 1.0)`, `headY = 0.5 + (pitch / 0.3)`
+  - MediaPipe: `headX = 0.5 - (headYaw / 1.0)`, `headY = 0.5 - (headPitch / 0.6)`
+  - MediaPipe pupil: `1.0 - irisRatioX`, `1.0 - irisRatioY`
+- **Separate raw/calibrated points**: `EyeTermGazeResult` now returns both `rawPoint` and `calibratedPoint`
+- **Head/pupil visualization**: Debug overlay shows orange person.fill (head), green eye.fill (pupil), white fusion line with slider-position dot
+- **Independent calibration**: `CalibrationManager` records head and pupil samples separately, computes dual affine transforms. Backend protocol has `headCalibrationTransform` and `pupilCalibrationTransform`
+- **Calibrated head/pupil visualization**: Outlined icons and yellow fusion line for calibrated signals
+- **Dwell progress border**: Cyan border stroke that grows during dwell, solid when confirmed
+- **Debug smoothing slider**: EMA filters for all 6 debug visualization points (head, pupil, cal head, cal pupil, raw fused, cal fused) — separate from pipeline smoothing
+- **Voice audio level**: `onAudioLevel` callback from VoiceEngine, wired to AppState
+- **Floating waveform panel**: Whisper-style `AudioWaveformView` in a floating NSPanel at bottom-center, auto-shows/hides with voice start/stop. 64-bar scrolling amplitude display
+- **Audio level meter**: 5-bar indicator in menu bar voice section
+- **iTerm AppleScript authorization**: Added `NSAppleEventsUsageDescription` to Info.plist, moved `NSAppleScript` execution to main thread via `@MainActor`
+- **Terminal window tiling**: Uses `NSScreen.visibleFrame` (excludes menu bar/dock) instead of full frame. Proper coordinate conversion from macOS bottom-left to AppleScript top-left origin
+- **No longer closes existing iTerm windows**: Removed `close every window` from setup, teardown only closes managed windows (by index, in reverse order)
+- **GitHub repo created**: https://github.com/brianharms/eyeTerm (private)
+
+### In Progress / Incomplete
+- User has not yet tested this build — plans to test tomorrow
+- L2CS-Net CoreML backend integration (deferred, see TODO section below)
+
+### Key Decisions
+- UIKit window-level UIPanGestureRecognizer for chat swipe dismiss (from prior projectQ work, noted in CLAUDE.md)
+- Two-step Vision framework approach because `VNDetectFaceLandmarksRequest` alone doesn't reliably populate yaw/pitch
+- Independent calibration before fusion allows the head/eye slider to work post-calibration
+- Debug smoothing is visualization-only (doesn't affect actual gaze pipeline)
+- Floating waveform panel chosen over menu bar indicator for visibility
+- Ad-hoc code signing (`CODE_SIGN_IDENTITY = "-"`) may still prevent TCC prompts on fresh installs — user should switch to Personal Team signing in Xcode if authorization dialogs don't appear
+
+### Files Changed
+- `Sources/GazeTerminal/App/AppState.swift` — added audioLevel, isSpeaking, audioLevelHistory, debugSmoothing, calibratedHeadGazePoint, calibratedPupilGazePoint, dwellingQuadrant, dwellProgress, headGazePoint, pupilGazePoint
+- `Sources/GazeTerminal/App/AppCoordinator.swift` — debug EMA filters, waveform panel management, audio level wiring, calibration dual-transform wiring
+- `Sources/GazeTerminal/GazeTracking/GazeEstimator.swift` — EyeTermDiagnostics with head/pupil/calibrated points, dual calibration transforms, sign corrections
+- `Sources/GazeTerminal/GazeTracking/GazeTracker.swift` — two-step Vision request, session cleanup on stop, dual calibration proxying
+- `Sources/GazeTerminal/GazeTracking/MediaPipeBackend.swift` — Swift-side fusion from raw components, dual calibration, sign corrections
+- `Sources/GazeTerminal/GazeTracking/EyeTrackingBackend.swift` — dual calibration transform protocol
+- `Sources/GazeTerminal/GazeTracking/CalibrationManager.swift` — dual sample recording, dual transform computation, CalibrationResult struct
+- `Sources/GazeTerminal/GazeTracking/ScreenQuadrant.swift` — `appleScriptBounds(for:visibleFrame:)` with proper coordinate conversion
+- `Sources/GazeTerminal/Terminal/TerminalManager.swift` — no longer closes existing windows, teardown closes only managed windows
+- `Sources/GazeTerminal/Terminal/WindowLayout.swift` — uses visibleFrame
+- `Sources/GazeTerminal/Terminal/AppleScriptBridge.swift` — `@MainActor runAsync`
+- `Sources/GazeTerminal/UI/GazeOverlayView.swift` — head/pupil icons, fusion lines, calibrated visualization, dwell progress border, HUD legend
+- `Sources/GazeTerminal/UI/AudioWaveformView.swift` — new file, floating waveform panel
+- `Sources/GazeTerminal/UI/MenuBarView.swift` — AudioLevelView, voice section layout
+- `Sources/GazeTerminal/UI/SettingsView.swift` — debug smoothing slider
+- `Sources/GazeTerminal/Utilities/DwellTimer.swift` — onDwellProgress callback
+- `Sources/GazeTerminal/Voice/VoiceEngine.swift` — onAudioLevel callback
+- `Info.plist` — NSAppleEventsUsageDescription
+- `GazeTerminal.xcodeproj/project.pbxproj` — AudioWaveformView.swift added
+
+### Known Issues
+- Ad-hoc code signing may silently block TCC AppleEvent prompts on fresh machines — needs Personal Team signing for reliable authorization dialogs
+- Gaze inversions were corrected through iterative testing but have not been verified on other machines/cameras
+- `ENABLE_HARDENED_RUNTIME = NO` in both Debug and Release configs — would need hardened runtime for notarization/distribution
+
+### Running Services
+- eyeTerm app may still be running in the menu bar (launched during testing)
+
+### Next Steps
+- User plans to test the full build tomorrow (eye tracking, calibration, voice, terminal control)
+- If AppleScript auth still fails, switch to Personal Team signing in Xcode
+- Test voice waveform panel visibility and responsiveness
+- Verify terminal window tiling respects dock/menu bar correctly
+- Consider L2CS-Net CoreML integration when ready (see TODO section)
+
+---
+
 ## TODO — Future Features
 
 ### L2CS-Net CoreML Backend (Third Tracking Backend)
