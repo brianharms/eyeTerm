@@ -1,0 +1,553 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0B77A75ECD521CEF407EAE27 /* WalkthroughStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55A35A4F06AA601CA33A3B2F /* WalkthroughStep.swift */; };
+		0D13C3C30C0E41E77ADEE4F1 /* CalibrationOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 649EB8AB3622AC30BD47E18C /* CalibrationOverlayView.swift */; };
+		14FEBCBF7B93E8908CD45E03 /* StatusIndicatorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19F20A1853EEA72B7AE7E1DE /* StatusIndicatorView.swift */; };
+		1CC8CBC6676420D7393A1C26 /* AppleScriptBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF02BB99385176470EFB325B /* AppleScriptBridge.swift */; };
+		204B7FE32E94802CE2725BC6 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D434A6091E4C37B1F9E67F8 /* MenuBarView.swift */; };
+		233134220A33A4B25D31931A /* WalkthroughView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEC63353E191BAC5FA8A487F /* WalkthroughView.swift */; };
+		282838307D01683D8BD8F1CB /* TerminalManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D971132F816F74786BC691C8 /* TerminalManager.swift */; };
+		2A9DDA0C82A72C05A8069812 /* WalkthroughReadyStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7498BAE98D6BB7AD51A4A4CB /* WalkthroughReadyStep.swift */; };
+		2BC05927904FF8EA92357D2E /* OverlayMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6273C1EA2AD00F010998F209 /* OverlayMode.swift */; };
+		37E49EB6E6356B9CBBEF7400 /* MediaPipeBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF0B3E2F8EFD6A97D33EC806 /* MediaPipeBackend.swift */; };
+		3B5F3087E5C2E30FB5AE02F8 /* CommandParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3D7656B401C9365BCCE0E2A /* CommandParser.swift */; };
+		41121298F16F81C386763CED /* WalkthroughHowItWorksStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FD07D70CA91DA50BAEEDD30 /* WalkthroughHowItWorksStep.swift */; };
+		449556D9596ECC40337CDDE8 /* GazeEstimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DD550AB1F16D0040719D2DA /* GazeEstimator.swift */; };
+		4A0629B5A627B6355B032689 /* OnboardingState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39C45F5F7940FFC7F7A40EAE /* OnboardingState.swift */; };
+		4A8E062AA8FAA36DBF3ED97F /* GazeOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D7A1B2610FF4B356FDC0255 /* GazeOverlayView.swift */; };
+		4E23608CA088A3875BD71946 /* ErrorDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F92F69AB830868DA666C8D7B /* ErrorDetailView.swift */; };
+		4E58B88FFC6267D788159434 /* CalibrationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAF8449A3159B48CA9DA6879 /* CalibrationManager.swift */; };
+		579D7B6531FFEC76C011CD9E /* VoiceEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AF8817280F8C632A472DB92 /* VoiceEngine.swift */; };
+		597101944A1D476362C8CC4B /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = EA97E617679FB48A550F04E8 /* WhisperKit */; };
+		5F8E1BB3E87673B5CAB2F94D /* CameraPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E89C6715F2C5F4FB2198BD8 /* CameraPreviewView.swift */; };
+		608807849A13323FD19BC4DC /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF0F80FCA8BC6955CFE2F495 /* AppState.swift */; };
+		6AE889A7E9367BA6DB2F11C9 /* WindowLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 145CCF8051C7B30A286DD98B /* WindowLayout.swift */; };
+		76E33FFF0D7D67FF2EB07D92 /* WalkthroughPermissionStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A67D3E1D7454EDF7CF4908A /* WalkthroughPermissionStep.swift */; };
+		7E3B3CB6E3014A0707B1BED8 /* WalkthroughWelcomeStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85337BE1BBE399ECC52CB5B /* WalkthroughWelcomeStep.swift */; };
+		92EB5D6BBD83AD2EE00A0354 /* AudioBufferManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29B4CD9E94CB07422240DA2B /* AudioBufferManager.swift */; };
+		9882A587D3B8459E74B62827 /* GazeTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3886D549B376D4DF693023EC /* GazeTracker.swift */; };
+		9DB1D34E6E2B534014FA4900 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A48E2A2BB19D070810096C7 /* SettingsView.swift */; };
+		A72043C52EE1E16CD78486CF /* EyeTrackingBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 649FC715F5142AA65BFF5AD6 /* EyeTrackingBackend.swift */; };
+		A7E8B91BEC23BFD8E744B622 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DD02AD9E68EA4BBB73D3349A /* Assets.xcassets */; };
+		AABB0001GAZETRACKER00001 /* gaze_tracker.py in Resources */ = {isa = PBXBuildFile; fileRef = AABB0002GAZETRACKER00002 /* gaze_tracker.py */; };
+		AABB0003TESTGAZE0000003 /* test_gaze.py in Resources */ = {isa = PBXBuildFile; fileRef = AABB0004TESTGAZE0000004 /* test_gaze.py */; };
+		CA4DF2A5D511055B13DCFE47 /* DwellTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C16762EBF38DA8D934CECE3 /* DwellTimer.swift */; };
+		D2489536990E6F0C8A4384B1 /* Permissions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A48335853EC8FA8EE298833 /* Permissions.swift */; };
+		D6BA323314C9549AF7EDCD28 /* ScreenQuadrant.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7746B4C93E0563B2A2BC4D55 /* ScreenQuadrant.swift */; };
+		D9C0530B0936ACC11763335B /* WalkthroughCompleteStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = F19816AFF6712DF1D8178B67 /* WalkthroughCompleteStep.swift */; };
+		DCF0CA50397E64706ADE6D44 /* GazeEMAFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DF5E660D1EC381618E4F22B /* GazeEMAFilter.swift */; };
+		E3424CD2866BE1055E56563B /* AppCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08806DB2ECC3D18F4E418C15 /* AppCoordinator.swift */; };
+		EAD4B27D40154FB5DBDBF3B2 /* GazeTerminalApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FD771BB7B49C62AFC1E96EE /* GazeTerminalApp.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		08806DB2ECC3D18F4E418C15 /* AppCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCoordinator.swift; sourceTree = "<group>"; };
+		145CCF8051C7B30A286DD98B /* WindowLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowLayout.swift; sourceTree = "<group>"; };
+		19F20A1853EEA72B7AE7E1DE /* StatusIndicatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusIndicatorView.swift; sourceTree = "<group>"; };
+		1C16762EBF38DA8D934CECE3 /* DwellTimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DwellTimer.swift; sourceTree = "<group>"; };
+		29B4CD9E94CB07422240DA2B /* AudioBufferManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioBufferManager.swift; sourceTree = "<group>"; };
+		2DF5E660D1EC381618E4F22B /* GazeEMAFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GazeEMAFilter.swift; sourceTree = "<group>"; };
+		3886D549B376D4DF693023EC /* GazeTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GazeTracker.swift; sourceTree = "<group>"; };
+		39C45F5F7940FFC7F7A40EAE /* OnboardingState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingState.swift; sourceTree = "<group>"; };
+		55A35A4F06AA601CA33A3B2F /* WalkthroughStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkthroughStep.swift; sourceTree = "<group>"; };
+		5A48E2A2BB19D070810096C7 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		5D434A6091E4C37B1F9E67F8 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
+		6273C1EA2AD00F010998F209 /* OverlayMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayMode.swift; sourceTree = "<group>"; };
+		649EB8AB3622AC30BD47E18C /* CalibrationOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalibrationOverlayView.swift; sourceTree = "<group>"; };
+		649FC715F5142AA65BFF5AD6 /* EyeTrackingBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EyeTrackingBackend.swift; sourceTree = "<group>"; };
+		6AF8817280F8C632A472DB92 /* VoiceEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceEngine.swift; sourceTree = "<group>"; };
+		6DD550AB1F16D0040719D2DA /* GazeEstimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GazeEstimator.swift; sourceTree = "<group>"; };
+		7498BAE98D6BB7AD51A4A4CB /* WalkthroughReadyStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkthroughReadyStep.swift; sourceTree = "<group>"; };
+		7746B4C93E0563B2A2BC4D55 /* ScreenQuadrant.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenQuadrant.swift; sourceTree = "<group>"; };
+		7D7A1B2610FF4B356FDC0255 /* GazeOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GazeOverlayView.swift; sourceTree = "<group>"; };
+		8A48335853EC8FA8EE298833 /* Permissions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Permissions.swift; sourceTree = "<group>"; };
+		8A67D3E1D7454EDF7CF4908A /* WalkthroughPermissionStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkthroughPermissionStep.swift; sourceTree = "<group>"; };
+		8E89C6715F2C5F4FB2198BD8 /* CameraPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPreviewView.swift; sourceTree = "<group>"; };
+		9D83A44DBAC60BB46F559C09 /* GazeTerminal.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GazeTerminal.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9FD07D70CA91DA50BAEEDD30 /* WalkthroughHowItWorksStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkthroughHowItWorksStep.swift; sourceTree = "<group>"; };
+		9FD771BB7B49C62AFC1E96EE /* GazeTerminalApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GazeTerminalApp.swift; sourceTree = "<group>"; };
+		A3D7656B401C9365BCCE0E2A /* CommandParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandParser.swift; sourceTree = "<group>"; };
+		AAF8449A3159B48CA9DA6879 /* CalibrationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalibrationManager.swift; sourceTree = "<group>"; };
+		AF0B3E2F8EFD6A97D33EC806 /* MediaPipeBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaPipeBackend.swift; sourceTree = "<group>"; };
+		BEC63353E191BAC5FA8A487F /* WalkthroughView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkthroughView.swift; sourceTree = "<group>"; };
+		C85337BE1BBE399ECC52CB5B /* WalkthroughWelcomeStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkthroughWelcomeStep.swift; sourceTree = "<group>"; };
+		D971132F816F74786BC691C8 /* TerminalManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalManager.swift; sourceTree = "<group>"; };
+		DD02AD9E68EA4BBB73D3349A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		EF02BB99385176470EFB325B /* AppleScriptBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleScriptBridge.swift; sourceTree = "<group>"; };
+		EF0F80FCA8BC6955CFE2F495 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		F19816AFF6712DF1D8178B67 /* WalkthroughCompleteStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkthroughCompleteStep.swift; sourceTree = "<group>"; };
+		F92F69AB830868DA666C8D7B /* ErrorDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorDetailView.swift; sourceTree = "<group>"; };
+		AABB0002GAZETRACKER00002 /* gaze_tracker.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; name = gaze_tracker.py; path = Resources/gaze_tracker.py; sourceTree = SOURCE_ROOT; };
+		AABB0004TESTGAZE0000004 /* test_gaze.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; name = test_gaze.py; path = Resources/test_gaze.py; sourceTree = SOURCE_ROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		7DD6503B71BBA43C81A6AFFB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				597101944A1D476362C8CC4B /* WhisperKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		17F2AF423870CCCC34213CCB /* GazeTracking */ = {
+			isa = PBXGroup;
+			children = (
+				AAF8449A3159B48CA9DA6879 /* CalibrationManager.swift */,
+				649FC715F5142AA65BFF5AD6 /* EyeTrackingBackend.swift */,
+				2DF5E660D1EC381618E4F22B /* GazeEMAFilter.swift */,
+				6DD550AB1F16D0040719D2DA /* GazeEstimator.swift */,
+				3886D549B376D4DF693023EC /* GazeTracker.swift */,
+				AF0B3E2F8EFD6A97D33EC806 /* MediaPipeBackend.swift */,
+				7746B4C93E0563B2A2BC4D55 /* ScreenQuadrant.swift */,
+			);
+			path = GazeTracking;
+			sourceTree = "<group>";
+		};
+		4C939BEF13856A4B74CC900C /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				649EB8AB3622AC30BD47E18C /* CalibrationOverlayView.swift */,
+				8E89C6715F2C5F4FB2198BD8 /* CameraPreviewView.swift */,
+				F92F69AB830868DA666C8D7B /* ErrorDetailView.swift */,
+				7D7A1B2610FF4B356FDC0255 /* GazeOverlayView.swift */,
+				5D434A6091E4C37B1F9E67F8 /* MenuBarView.swift */,
+				6273C1EA2AD00F010998F209 /* OverlayMode.swift */,
+				5A48E2A2BB19D070810096C7 /* SettingsView.swift */,
+				19F20A1853EEA72B7AE7E1DE /* StatusIndicatorView.swift */,
+				BC8968BBA023B3EF3AB868D3 /* Onboarding */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		5DF82CFBC9FF7B58C3EEDC88 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				9D83A44DBAC60BB46F559C09 /* GazeTerminal.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		759960DD518EFDCCA2C6AB01 = {
+			isa = PBXGroup;
+			children = (
+				C7A6027B87A6F7F9C3098E0F /* Sources */,
+				5DF82CFBC9FF7B58C3EEDC88 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		8784FF6262FEB8ECC007586B /* GazeTerminal */ = {
+			isa = PBXGroup;
+			children = (
+				EEF0F977FFF2B1FE08879F08 /* App */,
+				17F2AF423870CCCC34213CCB /* GazeTracking */,
+				B872771FF22841AEBA0416B1 /* Resources */,
+				F9A5B357C09E7B04E863D1BA /* Terminal */,
+				4C939BEF13856A4B74CC900C /* UI */,
+				CFC2A0F6FE58B51D53182F9D /* Utilities */,
+				DF5DC9472F4C2C2410C805E5 /* Voice */,
+			);
+			path = GazeTerminal;
+			sourceTree = "<group>";
+		};
+		B872771FF22841AEBA0416B1 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				DD02AD9E68EA4BBB73D3349A /* Assets.xcassets */,
+				AABB0002GAZETRACKER00002 /* gaze_tracker.py */,
+				AABB0004TESTGAZE0000004 /* test_gaze.py */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		BC8968BBA023B3EF3AB868D3 /* Onboarding */ = {
+			isa = PBXGroup;
+			children = (
+				F19816AFF6712DF1D8178B67 /* WalkthroughCompleteStep.swift */,
+				9FD07D70CA91DA50BAEEDD30 /* WalkthroughHowItWorksStep.swift */,
+				8A67D3E1D7454EDF7CF4908A /* WalkthroughPermissionStep.swift */,
+				7498BAE98D6BB7AD51A4A4CB /* WalkthroughReadyStep.swift */,
+				55A35A4F06AA601CA33A3B2F /* WalkthroughStep.swift */,
+				BEC63353E191BAC5FA8A487F /* WalkthroughView.swift */,
+				C85337BE1BBE399ECC52CB5B /* WalkthroughWelcomeStep.swift */,
+			);
+			path = Onboarding;
+			sourceTree = "<group>";
+		};
+		C7A6027B87A6F7F9C3098E0F /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				8784FF6262FEB8ECC007586B /* GazeTerminal */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		CFC2A0F6FE58B51D53182F9D /* Utilities */ = {
+			isa = PBXGroup;
+			children = (
+				1C16762EBF38DA8D934CECE3 /* DwellTimer.swift */,
+				8A48335853EC8FA8EE298833 /* Permissions.swift */,
+			);
+			path = Utilities;
+			sourceTree = "<group>";
+		};
+		DF5DC9472F4C2C2410C805E5 /* Voice */ = {
+			isa = PBXGroup;
+			children = (
+				29B4CD9E94CB07422240DA2B /* AudioBufferManager.swift */,
+				A3D7656B401C9365BCCE0E2A /* CommandParser.swift */,
+				6AF8817280F8C632A472DB92 /* VoiceEngine.swift */,
+			);
+			path = Voice;
+			sourceTree = "<group>";
+		};
+		EEF0F977FFF2B1FE08879F08 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				08806DB2ECC3D18F4E418C15 /* AppCoordinator.swift */,
+				EF0F80FCA8BC6955CFE2F495 /* AppState.swift */,
+				9FD771BB7B49C62AFC1E96EE /* GazeTerminalApp.swift */,
+				39C45F5F7940FFC7F7A40EAE /* OnboardingState.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		F9A5B357C09E7B04E863D1BA /* Terminal */ = {
+			isa = PBXGroup;
+			children = (
+				EF02BB99385176470EFB325B /* AppleScriptBridge.swift */,
+				D971132F816F74786BC691C8 /* TerminalManager.swift */,
+				145CCF8051C7B30A286DD98B /* WindowLayout.swift */,
+			);
+			path = Terminal;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		DB98E9146EAC540F461B01D1 /* GazeTerminal */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 776CB8F7021F998B789082EF /* Build configuration list for PBXNativeTarget "GazeTerminal" */;
+			buildPhases = (
+				3CB4E7333B308E8C10218408 /* Sources */,
+				7BD5A92E2EEBB9A0A628E7C4 /* Resources */,
+				7DD6503B71BBA43C81A6AFFB /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = GazeTerminal;
+			packageProductDependencies = (
+				EA97E617679FB48A550F04E8 /* WhisperKit */,
+			);
+			productName = GazeTerminal;
+			productReference = 9D83A44DBAC60BB46F559C09 /* GazeTerminal.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		970B1BB519E3BDAE1848CDCF /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+			};
+			buildConfigurationList = F5E287B3AD64BD0454ACDACE /* Build configuration list for PBXProject "GazeTerminal" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 759960DD518EFDCCA2C6AB01;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				2EB8D1A971F338672AF3FB4C /* XCRemoteSwiftPackageReference "WhisperKit" */,
+			);
+			preferredProjectObjectVersion = 77;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				DB98E9146EAC540F461B01D1 /* GazeTerminal */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		7BD5A92E2EEBB9A0A628E7C4 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A7E8B91BEC23BFD8E744B622 /* Assets.xcassets in Resources */,
+				AABB0001GAZETRACKER00001 /* gaze_tracker.py in Resources */,
+				AABB0003TESTGAZE0000003 /* test_gaze.py in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		3CB4E7333B308E8C10218408 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E3424CD2866BE1055E56563B /* AppCoordinator.swift in Sources */,
+				608807849A13323FD19BC4DC /* AppState.swift in Sources */,
+				1CC8CBC6676420D7393A1C26 /* AppleScriptBridge.swift in Sources */,
+				92EB5D6BBD83AD2EE00A0354 /* AudioBufferManager.swift in Sources */,
+				4E58B88FFC6267D788159434 /* CalibrationManager.swift in Sources */,
+				0D13C3C30C0E41E77ADEE4F1 /* CalibrationOverlayView.swift in Sources */,
+				5F8E1BB3E87673B5CAB2F94D /* CameraPreviewView.swift in Sources */,
+				3B5F3087E5C2E30FB5AE02F8 /* CommandParser.swift in Sources */,
+				CA4DF2A5D511055B13DCFE47 /* DwellTimer.swift in Sources */,
+				4E23608CA088A3875BD71946 /* ErrorDetailView.swift in Sources */,
+				A72043C52EE1E16CD78486CF /* EyeTrackingBackend.swift in Sources */,
+				DCF0CA50397E64706ADE6D44 /* GazeEMAFilter.swift in Sources */,
+				449556D9596ECC40337CDDE8 /* GazeEstimator.swift in Sources */,
+				4A8E062AA8FAA36DBF3ED97F /* GazeOverlayView.swift in Sources */,
+				EAD4B27D40154FB5DBDBF3B2 /* GazeTerminalApp.swift in Sources */,
+				9882A587D3B8459E74B62827 /* GazeTracker.swift in Sources */,
+				37E49EB6E6356B9CBBEF7400 /* MediaPipeBackend.swift in Sources */,
+				204B7FE32E94802CE2725BC6 /* MenuBarView.swift in Sources */,
+				4A0629B5A627B6355B032689 /* OnboardingState.swift in Sources */,
+				2BC05927904FF8EA92357D2E /* OverlayMode.swift in Sources */,
+				D2489536990E6F0C8A4384B1 /* Permissions.swift in Sources */,
+				D6BA323314C9549AF7EDCD28 /* ScreenQuadrant.swift in Sources */,
+				9DB1D34E6E2B534014FA4900 /* SettingsView.swift in Sources */,
+				14FEBCBF7B93E8908CD45E03 /* StatusIndicatorView.swift in Sources */,
+				282838307D01683D8BD8F1CB /* TerminalManager.swift in Sources */,
+				579D7B6531FFEC76C011CD9E /* VoiceEngine.swift in Sources */,
+				D9C0530B0936ACC11763335B /* WalkthroughCompleteStep.swift in Sources */,
+				41121298F16F81C386763CED /* WalkthroughHowItWorksStep.swift in Sources */,
+				76E33FFF0D7D67FF2EB07D92 /* WalkthroughPermissionStep.swift in Sources */,
+				2A9DDA0C82A72C05A8069812 /* WalkthroughReadyStep.swift in Sources */,
+				0B77A75ECD521CEF407EAE27 /* WalkthroughStep.swift in Sources */,
+				233134220A33A4B25D31931A /* WalkthroughView.swift in Sources */,
+				7E3B3CB6E3014A0707B1BED8 /* WalkthroughWelcomeStep.swift in Sources */,
+				6AE889A7E9367BA6DB2F11C9 /* WindowLayout.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		09C82E0E30196CAB80635BAA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = GazeTerminal.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = NO;
+				INFOPLIST_FILE = Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gazeterminal.app;
+				PRODUCT_NAME = eyeTerm;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+		21D6EAA7CEA23B31765705CC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		2CCED0BCB636266D4255C22E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = GazeTerminal.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = NO;
+				INFOPLIST_FILE = Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gazeterminal.app;
+				PRODUCT_NAME = eyeTerm;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+		C661DA661FE2054A71873C83 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		776CB8F7021F998B789082EF /* Build configuration list for PBXNativeTarget "GazeTerminal" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				09C82E0E30196CAB80635BAA /* Debug */,
+				2CCED0BCB636266D4255C22E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F5E287B3AD64BD0454ACDACE /* Build configuration list for PBXProject "GazeTerminal" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				21D6EAA7CEA23B31765705CC /* Debug */,
+				C661DA661FE2054A71873C83 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		2EB8D1A971F338672AF3FB4C /* XCRemoteSwiftPackageReference "WhisperKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/argmaxinc/WhisperKit.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.9.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		EA97E617679FB48A550F04E8 /* WhisperKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2EB8D1A971F338672AF3FB4C /* XCRemoteSwiftPackageReference "WhisperKit" */;
+			productName = WhisperKit;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 970B1BB519E3BDAE1848CDCF /* Project object */;
+}
