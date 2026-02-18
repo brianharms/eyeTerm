@@ -3,6 +3,7 @@ import WhisperKit
 
 final class VoiceEngine {
     var onTranscription: ((String) -> Void)?
+    var onAudioLevel: ((Float, Bool) -> Void)?
     var modelName: String = "small.en"
     var silenceThreshold: Float = 0.01
     var silenceDuration: TimeInterval = 0.5
@@ -111,6 +112,10 @@ final class VoiceEngine {
 
     private func processVAD(samples: [Float]) {
         let rms = computeRMS(samples)
+
+        DispatchQueue.main.async { [weak self] in
+            self?.onAudioLevel?(rms, rms >= (self?.silenceThreshold ?? 0.01))
+        }
 
         if rms >= silenceThreshold {
             isSpeaking = true

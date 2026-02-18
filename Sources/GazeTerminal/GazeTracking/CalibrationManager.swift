@@ -1,6 +1,11 @@
 import Foundation
 import CoreGraphics
 
+struct CalibrationResult {
+    let headTransform: CGAffineTransform
+    let pupilTransform: CGAffineTransform
+}
+
 final class CalibrationManager {
 
     // MARK: - Configuration
@@ -15,7 +20,8 @@ final class CalibrationManager {
 
     private static let samplesPerTarget = 45
     private static let settleFrames = 30
-    private static let defaultsKey = "CalibrationTransform"
+    private static let headDefaultsKey = "HeadCalibrationTransform"
+    private static let pupilDefaultsKey = "PupilCalibrationTransform"
 
     // MARK: - Public state
 
@@ -32,13 +38,13 @@ final class CalibrationManager {
     var progress: Double {
         let settleProgress = min(Double(settleCount) / Double(Self.settleFrames), 1.0)
         if settleProgress < 1.0 { return settleProgress * 0.4 }
-        let sampleProgress = min(Double(currentSamples.count) / Double(Self.samplesPerTarget), 1.0)
+        let sampleProgress = min(Double(currentHeadSamples.count) / Double(Self.samplesPerTarget), 1.0)
         return 0.4 + sampleProgress * 0.6
     }
 
     // Coordinator callbacks (set by AppCoordinator.wireCallbacks)
     var onNextTarget: ((CGPoint) -> Void)?
-    var onCalibrationComplete: ((CGAffineTransform) -> Void)?
+    var onCalibrationComplete: ((CalibrationResult) -> Void)?
 
     // UI-specific callbacks (set by CalibrationOverlayView)
     var onTargetChanged: ((CGPoint) -> Void)?
@@ -46,10 +52,13 @@ final class CalibrationManager {
 
     // MARK: - Private state
 
-    private var collectedSamples: [[CGPoint]] = []
-    private var currentSamples: [CGPoint] = []
+    private var collectedHeadSamples: [[CGPoint]] = []
+    private var collectedPupilSamples: [[CGPoint]] = []
+    private var currentHeadSamples: [CGPoint] = []
+    private var currentPupilSamples: [CGPoint] = []
     private var settleCount = 0
-    private var transform: CGAffineTransform?
+    private var headTransform: CGAffineTransform?
+    private var pupilTransform: CGAffineTransform?
 
     // MARK: - Init
 
@@ -61,12 +70,15 @@ final class CalibrationManager {
 
     func startCalibration() {
         currentTargetIndex = 0
-        collectedSamples = []
-        currentSamples = []
+        collectedHeadSamples = []
+        collectedPupilSamples = []
+        currentHeadSamples = []
+        currentPupilSamples = []
         settleCount = 0
         isSettling = true
         isCalibrated = false
-        transform = nil
+        headTransform = nil
+        pupilTransform = nil
 
         if let pos = currentTargetPosition {
             onNextTarget?(pos)
@@ -74,7 +86,7 @@ final class CalibrationManager {
         }
     }
 
-    func recordSample(gazePoint: CGPoint) {
+    func recordSample(headPoint: CGPoint, pupilPoint: CGPoint) {
         guard currentTargetIndex < totalTargets else { return }
 
         if settleCount < Self.settleFrames {
@@ -87,15 +99,18 @@ final class CalibrationManager {
         }
 
         isSettling = false
-        currentSamples.append(gazePoint)
+        currentHeadSamples.append(headPoint)
+        currentPupilSamples.append(pupilPoint)
 
         if let pos = currentTargetPosition {
             onTargetProgressUpdate?(pos, progress)
         }
 
-        if currentSamples.count >= Self.samplesPerTarget {
-            collectedSamples.append(currentSamples)
-            currentSamples = []
+        if currentHeadSamples.count >= Self.samplesPerTarget {
+            collectedHeadSamples.append(currentHeadSamples)
+            collectedPupilSamples.append(currentPupilSamples)
+            currentHeadSamples = []
+            currentPupilSamples = []
             settleCount = 0
             isSettling = true
             currentTargetIndex += 1
@@ -111,21 +126,17 @@ final class CalibrationManager {
         }
     }
 
-    func applyCorrection(to point: CGPoint) -> CGPoint {
-        guard let t = transform else { return point }
-        var corrected = point.applying(t)
-        corrected.x = min(1, max(0, corrected.x))
-        corrected.y = min(1, max(0, corrected.y))
-        return corrected
-    }
-
     func reset() {
         isCalibrated = false
-        transform = nil
+        headTransform = nil
+        pupilTransform = nil
         currentTargetIndex = 0
-        collectedSamples = []
-        currentSamples = []
-        UserDefaults.standard.removeObject(forKey: Self.defaultsKey)
+        collectedHeadSamples = []
+        collectedPupilSamples = []
+        currentHeadSamples = []
+        currentPupilSamples = []
+        UserDefaults.standard.removeObject(forKey: Self.headDefaultsKey)
+        UserDefaults.standard.removeObject(forKey: Self.pupilDefaultsKey)
     }
 
     // MARK: - Calibration math
@@ -138,22 +149,29 @@ final class CalibrationManager {
     ///
     /// With 5 point pairs (overdetermined), solve via least-squares (normal equations).
     private func finishCalibration() {
-        guard collectedSamples.count == totalTargets else { return }
+        guard collectedHeadSamples.count == totalTargets,
+              collectedPupilSamples.count == totalTargets else { return }
 
+        let headT = solveTransform(from: collectedHeadSamples) ?? .identity
+        let pupilT = solveTransform(from: collectedPupilSamples) ?? .identity
+
+        self.headTransform = headT
+        self.pupilTransform = pupilT
+        self.isCalibrated = true
+        saveCalibration(headT, key: Self.headDefaultsKey)
+        saveCalibration(pupilT, key: Self.pupilDefaultsKey)
+        onCalibrationComplete?(CalibrationResult(headTransform: headT, pupilTransform: pupilT))
+    }
+
+    private func solveTransform(from collectedSamples: [[CGPoint]]) -> CGAffineTransform? {
         var gazeAverages: [CGPoint] = []
         for samples in collectedSamples {
-            let avg = average(of: samples)
-            gazeAverages.append(avg)
+            gazeAverages.append(average(of: samples))
         }
 
         let targets = Self.targetPositions
-
-        // Solve for X params:  targetX_i = a * gX_i + b * gY_i + tx
-        // Solve for Y params:  targetY_i = c * gX_i + d * gY_i + ty
-        // Build A matrix (n×3) and b vectors.
         let n = targets.count
 
-        // A^T A (3×3) and A^T b (3×1) — solve independently for x and y targets.
         var ata = [[Double]](repeating: [Double](repeating: 0, count: 3), count: 3)
         var atbX = [Double](repeating: 0, count: 3)
         var atbY = [Double](repeating: 0, count: 3)
@@ -162,7 +180,6 @@ final class CalibrationManager {
             let gx = Double(gazeAverages[i].x)
             let gy = Double(gazeAverages[i].y)
             let row = [gx, gy, 1.0]
-
             let tx = Double(targets[i].x)
             let ty = Double(targets[i].y)
 
@@ -177,28 +194,15 @@ final class CalibrationManager {
 
         guard let xParams = solve3x3(ata, atbX),
               let yParams = solve3x3(ata, atbY) else {
-            onCalibrationComplete?(.identity)
-            return
+            return nil
         }
 
-        // CGAffineTransform:
-        //   x' = a*x + c*y + tx
-        //   y' = b*x + d*y + ty
-        // Our solution: targetX = xParams[0]*gx + xParams[1]*gy + xParams[2]
-        //               targetY = yParams[0]*gx + yParams[1]*gy + yParams[2]
-        // So:  a = xParams[0], c = xParams[1], tx = xParams[2]
-        //      b = yParams[0], d = yParams[1], ty = yParams[2]
-        let result = CGAffineTransform(a: CGFloat(xParams[0]),
-                                       b: CGFloat(yParams[0]),
-                                       c: CGFloat(xParams[1]),
-                                       d: CGFloat(yParams[1]),
-                                       tx: CGFloat(xParams[2]),
-                                       ty: CGFloat(yParams[2]))
-
-        self.transform = result
-        self.isCalibrated = true
-        saveCalibration(result)
-        onCalibrationComplete?(result)
+        return CGAffineTransform(a: CGFloat(xParams[0]),
+                                 b: CGFloat(yParams[0]),
+                                 c: CGFloat(xParams[1]),
+                                 d: CGFloat(yParams[1]),
+                                 tx: CGFloat(xParams[2]),
+                                 ty: CGFloat(yParams[2]))
     }
 
     /// Solve a 3×3 linear system Ax = b using Cramer's rule.
@@ -225,23 +229,33 @@ final class CalibrationManager {
 
     // MARK: - Persistence
 
-    private func saveCalibration(_ t: CGAffineTransform) {
+    private func saveCalibration(_ t: CGAffineTransform, key: String) {
         let values = [t.a, t.b, t.c, t.d, t.tx, t.ty].map { Double($0) }
-        UserDefaults.standard.set(values, forKey: Self.defaultsKey)
+        UserDefaults.standard.set(values, forKey: key)
     }
 
     private func loadSavedCalibration() {
-        guard let values = UserDefaults.standard.array(forKey: Self.defaultsKey) as? [Double],
-              values.count == 6 else { return }
+        headTransform = loadTransform(key: Self.headDefaultsKey)
+        pupilTransform = loadTransform(key: Self.pupilDefaultsKey)
+        if headTransform != nil || pupilTransform != nil {
+            isCalibrated = true
+        }
+    }
 
-        let t = CGAffineTransform(a: CGFloat(values[0]),
-                                  b: CGFloat(values[1]),
-                                  c: CGFloat(values[2]),
-                                  d: CGFloat(values[3]),
-                                  tx: CGFloat(values[4]),
-                                  ty: CGFloat(values[5]))
-        self.transform = t
-        self.isCalibrated = true
+    private func loadTransform(key: String) -> CGAffineTransform? {
+        guard let values = UserDefaults.standard.array(forKey: key) as? [Double],
+              values.count == 6 else { return nil }
+        return CGAffineTransform(a: CGFloat(values[0]),
+                                 b: CGFloat(values[1]),
+                                 c: CGFloat(values[2]),
+                                 d: CGFloat(values[3]),
+                                 tx: CGFloat(values[4]),
+                                 ty: CGFloat(values[5]))
+    }
+
+    var savedCalibrationResult: CalibrationResult? {
+        guard let h = headTransform, let p = pupilTransform else { return nil }
+        return CalibrationResult(headTransform: h, pupilTransform: p)
     }
 
     // MARK: - Helpers

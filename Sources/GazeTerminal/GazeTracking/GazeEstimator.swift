@@ -7,24 +7,32 @@ struct EyeTermDiagnostics {
     let headPitch: Double
     let pupilOffsetX: Double
     let pupilOffsetY: Double
+    let headGazePoint: CGPoint
+    let pupilGazePoint: CGPoint
+    let calibratedHeadGazePoint: CGPoint
+    let calibratedPupilGazePoint: CGPoint
 }
 
 struct EyeTermGazeResult {
-    let point: CGPoint
+    let rawPoint: CGPoint
+    let calibratedPoint: CGPoint
     let confidence: Double
     let diagnostics: EyeTermDiagnostics
 }
 
 final class EyeTermEstimator {
 
-    var calibrationTransform: CGAffineTransform?
+    var headCalibrationTransform: CGAffineTransform?
+    var pupilCalibrationTransform: CGAffineTransform?
 
     /// Balance between head pose (1.0) and pupil tracking (0.0). Default 0.85.
     var headWeight: Double = 0.85
 
     // MARK: - Public
 
-    func estimateGaze(from observation: VNFaceObservation) -> EyeTermGazeResult? {
+    func estimateGaze(from observation: VNFaceObservation,
+                      yawOverride: NSNumber? = nil,
+                      pitchOverride: NSNumber? = nil) -> EyeTermGazeResult? {
         guard let landmarks = observation.landmarks else { return nil }
         guard let leftPupil = landmarks.leftPupil,
               let rightPupil = landmarks.rightPupil,
@@ -32,12 +40,13 @@ final class EyeTermEstimator {
               let rightEye = landmarks.rightEye else { return nil }
 
         // --- Head pose (coarse gaze) ---
-        let yaw = observation.yaw?.doubleValue ?? 0    // negative = looking left (camera POV)
-        let pitch = observation.pitch?.doubleValue ?? 0 // negative = looking down
+        // Prefer overrides from VNDetectFaceRectanglesRequest which reliably provides these.
+        let yaw = (yawOverride ?? observation.yaw)?.doubleValue ?? 0
+        let pitch = (pitchOverride ?? observation.pitch)?.doubleValue ?? 0
 
         // Map head rotation to normalised screen position.
-        let headX = 0.5 + (-yaw / 1.0)
-        let headY = 0.5 + (-pitch / 0.6)
+        let headX = 0.5 - (yaw / 1.0)
+        let headY = 0.5 + (pitch / 0.3)
 
         // --- Pupil offset within eye sockets (fine gaze) ---
         let leftOffset = pupilOffset(pupil: leftPupil, eye: leftEye, boundingBox: observation.boundingBox)
@@ -50,18 +59,32 @@ final class EyeTermEstimator {
         let pupilX = Double(1.0 - avgPupilOffsetX)
         let pupilY = Double(1.0 - avgPupilOffsetY)
 
-        // --- Fuse with configurable weight ---
+        // --- Apply per-signal calibration ---
+        var calHeadX = headX
+        var calHeadY = headY
+        if let t = headCalibrationTransform {
+            let p = CGPoint(x: headX, y: headY).applying(t)
+            calHeadX = clamp(Double(p.x), min: 0, max: 1)
+            calHeadY = clamp(Double(p.y), min: 0, max: 1)
+        }
+
+        var calPupilX = pupilX
+        var calPupilY = pupilY
+        if let t = pupilCalibrationTransform {
+            let p = CGPoint(x: pupilX, y: pupilY).applying(t)
+            calPupilX = clamp(Double(p.x), min: 0, max: 1)
+            calPupilY = clamp(Double(p.y), min: 0, max: 1)
+        }
+
+        // --- Fuse calibrated signals ---
         let eyeWeight = 1.0 - headWeight
         let rawX = clamp(headWeight * headX + eyeWeight * pupilX, min: 0, max: 1)
         let rawY = clamp(headWeight * headY + eyeWeight * pupilY, min: 0, max: 1)
-        var point = CGPoint(x: rawX, y: rawY)
+        let rawPoint = CGPoint(x: rawX, y: rawY)
 
-        // Apply calibration correction if available.
-        if let transform = calibrationTransform {
-            point = point.applying(transform)
-            point.x = clamp(Double(point.x), min: 0, max: 1)
-            point.y = clamp(Double(point.y), min: 0, max: 1)
-        }
+        let calX = clamp(headWeight * calHeadX + eyeWeight * calPupilX, min: 0, max: 1)
+        let calY = clamp(headWeight * calHeadY + eyeWeight * calPupilY, min: 0, max: 1)
+        let calibratedPoint = CGPoint(x: calX, y: calY)
 
         // --- Confidence ---
         let faceConf = Double(observation.confidence)
@@ -73,10 +96,14 @@ final class EyeTermEstimator {
             headYaw: yaw,
             headPitch: pitch,
             pupilOffsetX: Double(avgPupilOffsetX),
-            pupilOffsetY: Double(avgPupilOffsetY)
+            pupilOffsetY: Double(avgPupilOffsetY),
+            headGazePoint: CGPoint(x: clamp(headX, min: 0, max: 1), y: clamp(headY, min: 0, max: 1)),
+            pupilGazePoint: CGPoint(x: clamp(pupilX, min: 0, max: 1), y: clamp(pupilY, min: 0, max: 1)),
+            calibratedHeadGazePoint: CGPoint(x: calHeadX, y: calHeadY),
+            calibratedPupilGazePoint: CGPoint(x: calPupilX, y: calPupilY)
         )
 
-        return EyeTermGazeResult(point: point, confidence: confidence, diagnostics: diagnostics)
+        return EyeTermGazeResult(rawPoint: rawPoint, calibratedPoint: calibratedPoint, confidence: confidence, diagnostics: diagnostics)
     }
 
     // MARK: - Helpers

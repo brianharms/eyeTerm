@@ -28,17 +28,9 @@ enum AppleScriptBridge {
         return result?.stringValue
     }
 
-    /// Execute an AppleScript asynchronously, off the main actor.
+    /// Execute an AppleScript asynchronously on the main thread (required by NSAppleScript).
+    @MainActor
     static func runAsync(_ source: String) async throws -> String? {
-        try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    let value = try run(source)
-                    continuation.resume(returning: value)
-                } catch {
-                    continuation.resume(throwing: error)
-                }
-            }
-        }
+        try run(source)
     }
 }

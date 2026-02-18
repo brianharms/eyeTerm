@@ -72,6 +72,18 @@ struct SettingsView: View {
                     .pickerStyle(.segmented)
                     .labelsHidden()
                 }
+
+                LabeledContent("Debug Smoothing") {
+                    HStack {
+                        Text("Smooth")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Slider(value: $state.debugSmoothing, in: 0.05...1.0, step: 0.05)
+                        Text("Raw")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
 
             Section("Voice") {

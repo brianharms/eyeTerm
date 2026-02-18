@@ -29,13 +29,13 @@ final class TerminalManager {
         // Small delay so iTerm2 finishes launching.
         try await Task.sleep(for: .seconds(1))
 
-        // Close any existing windows so we start clean.
-        try await AppleScriptBridge.runAsync("""
+        // Count existing windows so we can track our new ones by ID.
+        let countResult = try await AppleScriptBridge.runAsync("""
             tell application "iTerm2"
-                close every window
+                count of windows
             end tell
         """)
-        try await Task.sleep(for: .milliseconds(500))
+        let existingWindowCount = Int(countResult ?? "0") ?? 0
 
         // Create one window per quadrant. We iterate in a fixed order and record each
         // window's index after all four are created.
@@ -57,6 +57,7 @@ final class TerminalManager {
         }
 
         // After creating 4 windows the most recently created window is index 1.
+        // Existing windows are pushed to higher indices.
         // We created them in order: topLeft, topRight, bottomLeft, bottomRight
         // so bottomRight is newest (index 1) and topLeft is oldest (index 4).
         for (offset, quadrant) in orderedQuadrants.enumerated() {
@@ -111,15 +112,19 @@ final class TerminalManager {
 
     // MARK: - Teardown
 
-    /// Close all managed iTerm2 windows.
+    /// Close only the managed eyeTerm windows, leaving user windows untouched.
     func tearDown() async throws {
         guard isSetup else { return }
 
-        try await AppleScriptBridge.runAsync("""
-            tell application "iTerm2"
-                close every window
-            end tell
-        """)
+        // Close in reverse index order (highest first) so indices stay valid.
+        let sorted = windowIndices.values.sorted(by: >)
+        for index in sorted {
+            try? await AppleScriptBridge.runAsync("""
+                tell application "iTerm2"
+                    close window \(index)
+                end tell
+            """)
+        }
 
         windowIndices.removeAll()
         isSetup = false

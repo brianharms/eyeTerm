@@ -22,6 +22,7 @@
 		449556D9596ECC40337CDDE8 /* GazeEstimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DD550AB1F16D0040719D2DA /* GazeEstimator.swift */; };
 		4A0629B5A627B6355B032689 /* OnboardingState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39C45F5F7940FFC7F7A40EAE /* OnboardingState.swift */; };
 		4A8E062AA8FAA36DBF3ED97F /* GazeOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D7A1B2610FF4B356FDC0255 /* GazeOverlayView.swift */; };
+		AABB0010AUDIOWAVEFORM001 /* AudioWaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB0011AUDIOWAVEFORM002 /* AudioWaveformView.swift */; };
 		4E23608CA088A3875BD71946 /* ErrorDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F92F69AB830868DA666C8D7B /* ErrorDetailView.swift */; };
 		4E58B88FFC6267D788159434 /* CalibrationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAF8449A3159B48CA9DA6879 /* CalibrationManager.swift */; };
 		579D7B6531FFEC76C011CD9E /* VoiceEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AF8817280F8C632A472DB92 /* VoiceEngine.swift */; };
@@ -86,6 +87,7 @@
 		F92F69AB830868DA666C8D7B /* ErrorDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorDetailView.swift; sourceTree = "<group>"; };
 		AABB0002GAZETRACKER00002 /* gaze_tracker.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; name = gaze_tracker.py; path = Resources/gaze_tracker.py; sourceTree = SOURCE_ROOT; };
 		AABB0004TESTGAZE0000004 /* test_gaze.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; name = test_gaze.py; path = Resources/test_gaze.py; sourceTree = SOURCE_ROOT; };
+		AABB0011AUDIOWAVEFORM002 /* AudioWaveformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioWaveformView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -117,6 +119,7 @@
 		4C939BEF13856A4B74CC900C /* UI */ = {
 			isa = PBXGroup;
 			children = (
+				AABB0011AUDIOWAVEFORM002 /* AudioWaveformView.swift */,
 				649EB8AB3622AC30BD47E18C /* CalibrationOverlayView.swift */,
 				8E89C6715F2C5F4FB2198BD8 /* CameraPreviewView.swift */,
 				F92F69AB830868DA666C8D7B /* ErrorDetailView.swift */,
@@ -308,6 +311,7 @@
 				608807849A13323FD19BC4DC /* AppState.swift in Sources */,
 				1CC8CBC6676420D7393A1C26 /* AppleScriptBridge.swift in Sources */,
 				92EB5D6BBD83AD2EE00A0354 /* AudioBufferManager.swift in Sources */,
+				AABB0010AUDIOWAVEFORM001 /* AudioWaveformView.swift in Sources */,
 				4E58B88FFC6267D788159434 /* CalibrationManager.swift in Sources */,
 				0D13C3C30C0E41E77ADEE4F1 /* CalibrationOverlayView.swift in Sources */,
 				5F8E1BB3E87673B5CAB2F94D /* CameraPreviewView.swift in Sources */,

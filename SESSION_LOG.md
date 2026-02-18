@@ -46,3 +46,16 @@ Fix camera preview overlay alignment in eyeTerm (GazeTerminal) — the green fac
 - Launch eyeTerm, test overlay accuracy on both backends (MediaPipe and Apple Vision) with dynamic aspect ratio
 - If horizontal alignment is still off on one backend, investigate whether MediaPipe Python script mirrors the frame before face detection (check `Resources/gaze_tracker.py`)
 - Set up a remote git repository if desired
+
+---
+
+## TODO — Future Features
+
+### L2CS-Net CoreML Backend (Third Tracking Backend)
+- Convert L2CS-Net PyTorch model to CoreML via coremltools (PyTorch → ONNX → CoreML)
+- Creates a fully native third backend — no Python subprocess, no C++ dependencies
+- L2CS-Net predicts gaze yaw/pitch angles from a single webcam frame with ~3.9 degree accuracy (best of evaluated options)
+- MobileGaze variant (MobileNet/MobileOne backbones) available for faster inference
+- Integration path: load .mlmodel in Swift, feed camera frames, get yaw/pitch, fuse with existing head/eye weight system
+- Repo: github.com/Ahmednull/L2CS-Net (Apache 2.0 license)
+- Lightweight variant: github.com/yakhyo/gaze-estimation

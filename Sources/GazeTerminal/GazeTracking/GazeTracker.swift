@@ -44,9 +44,14 @@ final class EyeTermTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
 
     // MARK: - Calibration
 
-    var calibrationTransform: CGAffineTransform? {
-        get { estimator.calibrationTransform }
-        set { estimator.calibrationTransform = newValue }
+    var headCalibrationTransform: CGAffineTransform? {
+        get { estimator.headCalibrationTransform }
+        set { estimator.headCalibrationTransform = newValue }
+    }
+
+    var pupilCalibrationTransform: CGAffineTransform? {
+        get { estimator.pupilCalibrationTransform }
+        set { estimator.pupilCalibrationTransform = newValue }
     }
 
     // MARK: - Lifecycle
@@ -104,6 +109,12 @@ final class EyeTermTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
     func stop() {
         guard isRunning else { return }
         captureSession.stopRunning()
+
+        captureSession.beginConfiguration()
+        captureSession.inputs.forEach { captureSession.removeInput($0) }
+        captureSession.outputs.forEach { captureSession.removeOutput($0) }
+        captureSession.commitConfiguration()
+
         isRunning = false
         emaFilter.reset()
     }
@@ -115,38 +126,62 @@ final class EyeTermTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
                        from connection: AVCaptureConnection) {
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
 
-        let request = VNDetectFaceLandmarksRequest()
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .up, options: [:])
 
+        // Step 1: Detect face rectangles (reliably provides yaw/pitch).
+        let faceRectsRequest = VNDetectFaceRectanglesRequest()
         do {
-            try handler.perform([request])
+            try handler.perform([faceRectsRequest])
         } catch {
             reportUpdate(quadrant: nil, confidence: 0)
             reportFaceObservation(nil)
             return
         }
 
-        guard let results = request.results, let face = results.first else {
+        guard let faceRects = faceRectsRequest.results, !faceRects.isEmpty else {
             reportUpdate(quadrant: nil, confidence: 0)
             reportFaceObservation(nil)
             return
         }
 
+        // Step 2: Detect landmarks using the face observations from step 1.
+        let landmarksRequest = VNDetectFaceLandmarksRequest()
+        landmarksRequest.inputFaceObservations = faceRects
+        do {
+            try handler.perform([landmarksRequest])
+        } catch {
+            reportUpdate(quadrant: nil, confidence: 0)
+            reportFaceObservation(nil)
+            return
+        }
+
+        guard let results = landmarksRequest.results, let face = results.first else {
+            reportUpdate(quadrant: nil, confidence: 0)
+            reportFaceObservation(nil)
+            return
+        }
+
+        // Carry yaw/pitch from the face rectangles result since the landmarks
+        // result may not populate them.
+        let faceRect = faceRects.first
+        let yawOverride = faceRect?.yaw
+        let pitchOverride = faceRect?.pitch
+
         // Extract face observation data for camera preview overlay
         let faceData = extractFaceData(from: face)
 
-        guard let gaze = estimator.estimateGaze(from: face) else {
+        guard let gaze = estimator.estimateGaze(from: face, yawOverride: yawOverride, pitchOverride: pitchOverride) else {
             reportUpdate(quadrant: nil, confidence: 0)
             reportFaceObservation(faceData)
             return
         }
 
-        let rawPoint = gaze.point
-        let smoothedPoint = emaFilter.update(rawPoint)
+        let smoothedPoint = emaFilter.update(gaze.calibratedPoint)
         let quadrant = ScreenQuadrant.from(normalizedPoint: smoothedPoint)
 
         DispatchQueue.main.async { [weak self] in
-            self?.onRawGazePoint?(rawPoint)
+            self?.onRawGazePoint?(gaze.rawPoint)
+            self?.onCalibratedGazePoint?(gaze.calibratedPoint)
             self?.onSmoothedGazePoint?(smoothedPoint)
             self?.onGazeUpdate?(quadrant, gaze.confidence)
             self?.onDiagnostics?(gaze.diagnostics)

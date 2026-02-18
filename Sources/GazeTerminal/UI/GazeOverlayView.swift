@@ -36,12 +36,42 @@ private struct SubtleOverlayContent: View {
         ForEach(ScreenQuadrant.allCases) { quadrant in
             let isActive = quadrant == appState.activeQuadrant
             let isFocused = quadrant == appState.focusedQuadrant
+            let isDwelling = quadrant == appState.dwellingQuadrant
+            let progress = isDwelling ? appState.dwellProgress : 0
             let opacity = isFocused ? 1.0 : (isActive ? 0.7 : 0.25)
 
             cornerBrackets(for: quadrant, midX: midX, midY: midY)
                 .foregroundStyle(.white.opacity(opacity))
                 .animation(.easeOut(duration: 0.15), value: isActive)
                 .animation(.easeOut(duration: 0.15), value: isFocused)
+
+            // Dwell progress border
+            if isDwelling && !isFocused && progress > 0 {
+                let rect = quadrantRect(quadrant, midX: midX, midY: midY)
+                Rectangle()
+                    .strokeBorder(.cyan.opacity(0.4 * progress), lineWidth: 2 + 2 * progress)
+                    .frame(width: rect.width, height: rect.height)
+                    .position(x: rect.midX, y: rect.midY)
+            }
+
+            // Confirmed flash border
+            if isFocused {
+                let rect = quadrantRect(quadrant, midX: midX, midY: midY)
+                Rectangle()
+                    .strokeBorder(.cyan.opacity(0.6), lineWidth: 3)
+                    .frame(width: rect.width, height: rect.height)
+                    .position(x: rect.midX, y: rect.midY)
+                    .animation(.easeOut(duration: 0.2), value: isFocused)
+            }
+        }
+    }
+
+    private func quadrantRect(_ quadrant: ScreenQuadrant, midX: CGFloat, midY: CGFloat) -> CGRect {
+        switch quadrant {
+        case .topLeft: CGRect(x: 0, y: 0, width: midX, height: midY)
+        case .topRight: CGRect(x: midX, y: 0, width: midX, height: midY)
+        case .bottomLeft: CGRect(x: 0, y: midY, width: midX, height: midY)
+        case .bottomRight: CGRect(x: midX, y: midY, width: midX, height: midY)
         }
     }
 
@@ -131,16 +161,81 @@ private struct DebugOverlayContent: View {
         .stroke(style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
         .foregroundStyle(.white.opacity(0.2))
 
-        // Raw gaze point (red, small)
+        // Head gaze point (orange, head icon)
+        let headPX = appState.headGazePoint.x * size.width
+        let headPY = appState.headGazePoint.y * size.height
+        // Pupil gaze point (green, eye icon)
+        let pupilPX = appState.pupilGazePoint.x * size.width
+        let pupilPY = appState.pupilGazePoint.y * size.height
+
+        // Fusion line from eye to head
+        Path { path in
+            path.move(to: CGPoint(x: pupilPX, y: pupilPY))
+            path.addLine(to: CGPoint(x: headPX, y: headPY))
+        }
+        .stroke(.white.opacity(0.25), lineWidth: 1)
+
+        // Fusion point on the line (based on head weight slider)
+        let hw = appState.headWeight
+        let fusionLineX = pupilPX + (headPX - pupilPX) * hw
+        let fusionLineY = pupilPY + (headPY - pupilPY) * hw
+        Circle()
+            .fill(.white.opacity(0.5))
+            .frame(width: 6, height: 6)
+            .position(x: fusionLineX, y: fusionLineY)
+
+        Image(systemName: "person.fill")
+            .font(.system(size: 14))
+            .foregroundStyle(.orange.opacity(0.8))
+            .position(x: headPX, y: headPY)
+
+        Image(systemName: "eye.fill")
+            .font(.system(size: 12))
+            .foregroundStyle(.green.opacity(0.8))
+            .position(x: pupilPX, y: pupilPY)
+
+        // Calibrated head gaze point
+        let calHeadPX = appState.calibratedHeadGazePoint.x * size.width
+        let calHeadPY = appState.calibratedHeadGazePoint.y * size.height
+        // Calibrated pupil gaze point
+        let calPupilPX = appState.calibratedPupilGazePoint.x * size.width
+        let calPupilPY = appState.calibratedPupilGazePoint.y * size.height
+
+        // Calibrated fusion line from eye to head
+        Path { path in
+            path.move(to: CGPoint(x: calPupilPX, y: calPupilPY))
+            path.addLine(to: CGPoint(x: calHeadPX, y: calHeadPY))
+        }
+        .stroke(.yellow.opacity(0.3), lineWidth: 1)
+
+        // Calibrated fusion point on the line
+        let calFusionX = calPupilPX + (calHeadPX - calPupilPX) * hw
+        let calFusionY = calPupilPY + (calHeadPY - calPupilPY) * hw
+        Circle()
+            .fill(.yellow.opacity(0.5))
+            .frame(width: 6, height: 6)
+            .position(x: calFusionX, y: calFusionY)
+
+        Image(systemName: "person")
+            .font(.system(size: 14))
+            .foregroundStyle(.orange.opacity(0.5))
+            .position(x: calHeadPX, y: calHeadPY)
+
+        Image(systemName: "eye")
+            .font(.system(size: 12))
+            .foregroundStyle(.green.opacity(0.5))
+            .position(x: calPupilPX, y: calPupilPY)
+
+        // Raw fused gaze point (red, small)
         Circle()
             .fill(.red.opacity(0.6))
-            .frame(width: 8, height: 8)
+            .frame(width: 6, height: 6)
             .position(x: rawX, y: rawY)
 
         // Calibrated gaze point (yellow)
         Circle()
             .fill(.yellow.opacity(0.7))
-            .frame(width: 10, height: 10)
+            .frame(width: 8, height: 8)
             .position(x: calX, y: calY)
 
         // Smoothed gaze point (cyan) with crosshairs
@@ -164,8 +259,24 @@ private struct DebugOverlayContent: View {
         // HUD panel
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 4) {
+                Image(systemName: "person.fill").font(.system(size: 8)).foregroundStyle(.orange)
+                Text("Head: \(f(appState.headGazePoint.x)), \(f(appState.headGazePoint.y))")
+            }
+            HStack(spacing: 4) {
+                Image(systemName: "eye.fill").font(.system(size: 8)).foregroundStyle(.green)
+                Text("Pupil: \(f(appState.pupilGazePoint.x)), \(f(appState.pupilGazePoint.y))")
+            }
+            HStack(spacing: 4) {
+                Image(systemName: "person").font(.system(size: 8)).foregroundStyle(.orange.opacity(0.5))
+                Text("Cal Head: \(f(appState.calibratedHeadGazePoint.x)), \(f(appState.calibratedHeadGazePoint.y))")
+            }
+            HStack(spacing: 4) {
+                Image(systemName: "eye").font(.system(size: 8)).foregroundStyle(.green.opacity(0.5))
+                Text("Cal Pupil: \(f(appState.calibratedPupilGazePoint.x)), \(f(appState.calibratedPupilGazePoint.y))")
+            }
+            HStack(spacing: 4) {
                 Circle().fill(.red.opacity(0.6)).frame(width: 6, height: 6)
-                Text("Raw: \(f(appState.rawGazePoint.x)), \(f(appState.rawGazePoint.y))")
+                Text("Fused: \(f(appState.rawGazePoint.x)), \(f(appState.rawGazePoint.y))")
             }
             HStack(spacing: 4) {
                 Circle().fill(.yellow.opacity(0.7)).frame(width: 6, height: 6)

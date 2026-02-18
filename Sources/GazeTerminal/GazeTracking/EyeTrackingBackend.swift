@@ -21,7 +21,8 @@ protocol EyeTrackingBackend: AnyObject {
 
     var smoothingAlpha: Double { get set }
     var headWeight: Double { get set }
-    var calibrationTransform: CGAffineTransform? { get set }
+    var headCalibrationTransform: CGAffineTransform? { get set }
+    var pupilCalibrationTransform: CGAffineTransform? { get set }
 
     func start() throws
     func stop()

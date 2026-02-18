@@ -13,10 +13,17 @@ final class AppState {
     var isVoiceActive = false
     var lastTranscription = ""
     var isProcessingVoice = false
+    var audioLevel: Float = 0
+    var isSpeaking = false
+    var audioLevelHistory: [Float] = Array(repeating: 0, count: 64)
 
     // MARK: - Terminal
     var isTerminalSetup = false
     var focusedQuadrant: ScreenQuadrant?
+
+    // MARK: - Dwell Progress
+    var dwellingQuadrant: ScreenQuadrant?
+    var dwellProgress: Double = 0
 
     // MARK: - Settings
     var trackingBackend: TrackingBackend = .mediaPipe
@@ -28,6 +35,7 @@ final class AppState {
     var gazeSmoothing: Double = 0.3
     var headWeight: Double = 0.85
     var overlayMode: OverlayMode = .off
+    var debugSmoothing: Double = 0.15
 
     // MARK: - Eye Tracking Points (for overlay)
     var rawGazePoint: CGPoint = .zero
@@ -39,6 +47,10 @@ final class AppState {
     var headPitch: Double = 0
     var pupilOffsetX: Double = 0
     var pupilOffsetY: Double = 0
+    var headGazePoint: CGPoint = CGPoint(x: 0.5, y: 0.5)
+    var pupilGazePoint: CGPoint = CGPoint(x: 0.5, y: 0.5)
+    var calibratedHeadGazePoint: CGPoint = CGPoint(x: 0.5, y: 0.5)
+    var calibratedPupilGazePoint: CGPoint = CGPoint(x: 0.5, y: 0.5)
 
     // MARK: - Camera Preview
     var isCameraPreviewVisible = false

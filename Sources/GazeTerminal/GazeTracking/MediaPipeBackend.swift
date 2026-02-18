@@ -17,10 +17,10 @@ final class MediaPipeBackend: EyeTrackingBackend {
         set { emaFilter.alpha = newValue }
     }
 
-    /// Head weight is baked into gaze_tracker.py (0.85). This is a no-op for MediaPipe.
     var headWeight: Double = 0.85
 
-    var calibrationTransform: CGAffineTransform?
+    var headCalibrationTransform: CGAffineTransform?
+    var pupilCalibrationTransform: CGAffineTransform?
 
     private(set) var isRunning = false
 
@@ -212,27 +212,46 @@ final class MediaPipeBackend: EyeTrackingBackend {
             return
         }
 
-        let gazeX = json["gaze_x"] as? Double ?? 0.5
-        let gazeY = json["gaze_y"] as? Double ?? 0.5
         let confidence = json["confidence"] as? Double ?? 0
-        let quadrantStr = json["quadrant"] as? String ?? ""
         let headYaw = json["head_yaw"] as? Double ?? 0
         let headPitch = json["head_pitch"] as? Double ?? 0
         let irisRatioX = json["iris_ratio_x"] as? Double ?? 0.5
         let irisRatioY = json["iris_ratio_y"] as? Double ?? 0.5
 
-        var rawPoint = CGPoint(x: gazeX, y: gazeY)
+        // Compute fusion on Swift side so the head/eye slider works.
+        let headX = 0.5 - (headYaw / 1.0)
+        let headY = 0.5 - (headPitch / 0.6)
+        let pupilX = 1.0 - irisRatioX
+        let pupilY = 1.0 - irisRatioY
 
-        // Apply calibration.
-        if let transform = calibrationTransform {
-            rawPoint = rawPoint.applying(transform)
-            rawPoint.x = max(0, min(1, rawPoint.x))
-            rawPoint.y = max(0, min(1, rawPoint.y))
+        // Apply per-signal calibration.
+        var calHeadX = headX
+        var calHeadY = headY
+        if let t = headCalibrationTransform {
+            let p = CGPoint(x: headX, y: headY).applying(t)
+            calHeadX = max(0, min(1, Double(p.x)))
+            calHeadY = max(0, min(1, Double(p.y)))
         }
 
-        let smoothedPoint = emaFilter.update(rawPoint)
-        let quadrant = ScreenQuadrant(rawValue: quadrantStr)
-            ?? ScreenQuadrant.from(normalizedPoint: smoothedPoint)
+        var calPupilX = pupilX
+        var calPupilY = pupilY
+        if let t = pupilCalibrationTransform {
+            let p = CGPoint(x: pupilX, y: pupilY).applying(t)
+            calPupilX = max(0, min(1, Double(p.x)))
+            calPupilY = max(0, min(1, Double(p.y)))
+        }
+
+        let eyeWeight = 1.0 - headWeight
+        let fusedX = max(0, min(1, headWeight * headX + eyeWeight * pupilX))
+        let fusedY = max(0, min(1, headWeight * headY + eyeWeight * pupilY))
+        let rawGaze = CGPoint(x: fusedX, y: fusedY)
+
+        let calX = max(0, min(1, headWeight * calHeadX + eyeWeight * calPupilX))
+        let calY = max(0, min(1, headWeight * calHeadY + eyeWeight * calPupilY))
+        let calibratedPoint = CGPoint(x: calX, y: calY)
+
+        let smoothedPoint = emaFilter.update(calibratedPoint)
+        let quadrant = ScreenQuadrant.from(normalizedPoint: smoothedPoint)
 
         // Build face observation data for camera preview overlay.
         // Convert MediaPipe coords (top-left origin) to Vision-like coords (bottom-left origin)
@@ -243,13 +262,15 @@ final class MediaPipeBackend: EyeTrackingBackend {
             headYaw: headYaw,
             headPitch: headPitch,
             pupilOffsetX: irisRatioX,
-            pupilOffsetY: irisRatioY
+            pupilOffsetY: irisRatioY,
+            headGazePoint: CGPoint(x: max(0, min(1, headX)), y: max(0, min(1, headY))),
+            pupilGazePoint: CGPoint(x: max(0, min(1, pupilX)), y: max(0, min(1, pupilY))),
+            calibratedHeadGazePoint: CGPoint(x: calHeadX, y: calHeadY),
+            calibratedPupilGazePoint: CGPoint(x: calPupilX, y: calPupilY)
         )
 
-        let calibratedPoint = rawPoint
-
         DispatchQueue.main.async { [weak self] in
-            self?.onRawGazePoint?(CGPoint(x: gazeX, y: gazeY))
+            self?.onRawGazePoint?(rawGaze)
             self?.onCalibratedGazePoint?(calibratedPoint)
             self?.onSmoothedGazePoint?(smoothedPoint)
             self?.onGazeUpdate?(quadrant, confidence)

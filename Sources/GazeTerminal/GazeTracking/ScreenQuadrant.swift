@@ -50,21 +50,28 @@ enum ScreenQuadrant: String, CaseIterable, Codable, Identifiable, Sendable {
     }
 
     /// Returns AppleScript-style bounds {left, top, right, bottom} where origin is top-left of screen.
-    func appleScriptBounds(for screenBounds: CGRect) -> (left: Int, top: Int, right: Int, bottom: Int) {
-        let halfWidth = Int(screenBounds.width / 2)
-        let halfHeight = Int(screenBounds.height / 2)
-        let screenWidth = Int(screenBounds.width)
-        let screenHeight = Int(screenBounds.height)
+    /// Uses the visible frame (excluding menu bar and dock) for proper tiling.
+    func appleScriptBounds(for screenFrame: CGRect, visibleFrame: CGRect) -> (left: Int, top: Int, right: Int, bottom: Int) {
+        let screenHeight = screenFrame.height
+
+        // Convert visible frame from macOS coords (origin bottom-left) to AppleScript coords (origin top-left)
+        let visLeft = Int(visibleFrame.minX)
+        let visTop = Int(screenHeight - visibleFrame.maxY)
+        let visRight = Int(visibleFrame.maxX)
+        let visBottom = Int(screenHeight - visibleFrame.minY)
+
+        let midX = (visLeft + visRight) / 2
+        let midY = (visTop + visBottom) / 2
 
         switch self {
         case .topLeft:
-            return (0, 0, halfWidth, halfHeight)
+            return (visLeft, visTop, midX, midY)
         case .topRight:
-            return (halfWidth, 0, screenWidth, halfHeight)
+            return (midX, visTop, visRight, midY)
         case .bottomLeft:
-            return (0, halfHeight, halfWidth, screenHeight)
+            return (visLeft, midY, midX, visBottom)
         case .bottomRight:
-            return (halfWidth, halfHeight, screenWidth, screenHeight)
+            return (midX, midY, visRight, visBottom)
         }
     }
 

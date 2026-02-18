@@ -70,20 +70,28 @@ struct MenuBarView: View {
             sectionHeader("VOICE")
 
             Group {
-                Button {
-                    if appState.isVoiceActive {
-                        coordinator.stopVoice()
-                    } else {
-                        Task { await coordinator.startVoice() }
+                HStack(spacing: 6) {
+                    Button {
+                        if appState.isVoiceActive {
+                            coordinator.stopVoice()
+                        } else {
+                            Task { await coordinator.startVoice() }
+                        }
+                    } label: {
+                        Label(
+                            appState.isVoiceActive ? "Stop" : "Start",
+                            systemImage: appState.isVoiceActive ? "mic.slash" : "mic"
+                        )
                     }
-                } label: {
-                    Label(
-                        appState.isVoiceActive ? "Stop" : "Start",
-                        systemImage: appState.isVoiceActive ? "mic.slash" : "mic"
-                    )
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+
+                    if appState.isVoiceActive {
+                        AudioLevelView(level: appState.audioLevel, isSpeaking: appState.isSpeaking)
+                    }
+
+                    Spacer()
                 }
-                .buttonStyle(.borderless)
-                .font(.caption)
 
                 if !appState.lastTranscription.isEmpty {
                     Text(appState.lastTranscription)
@@ -234,5 +242,28 @@ struct MenuBarView: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
+    }
+}
+
+// MARK: - Audio Level Indicator
+
+private struct AudioLevelView: View {
+    let level: Float
+    let isSpeaking: Bool
+
+    private let barCount = 5
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(0..<barCount, id: \.self) { i in
+                let threshold = Float(i) / Float(barCount) * 0.06
+                let active = level > threshold
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(active ? (isSpeaking ? Color.green : Color.white.opacity(0.6)) : Color.gray.opacity(0.3))
+                    .frame(width: 3.5, height: CGFloat(5 + i * 2))
+            }
+        }
+        .frame(height: 16, alignment: .bottom)
+        .animation(.easeOut(duration: 0.06), value: level)
     }
 }

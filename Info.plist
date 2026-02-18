@@ -28,5 +28,7 @@
     <string>eyeTerm uses the camera to track your eye gaze for hands-free terminal control.</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>eyeTerm uses the microphone for voice command recognition.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>eyeTerm needs to control iTerm2 to focus and type into terminal windows based on your gaze.</string>
 </dict>
 </plist>

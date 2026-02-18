@@ -19,6 +19,15 @@ final class AppCoordinator {
     private var onboardingWindow: NSPanel?
     private var cameraPreviewWindow: NSPanel?
     private var errorDetailsWindow: NSPanel?
+    private var waveformWindow: NSPanel?
+
+    // Debug visualization smoothers (separate from pipeline smoothing)
+    private var debugHeadFilter = EyeTermEMAFilter(alpha: 0.15)
+    private var debugPupilFilter = EyeTermEMAFilter(alpha: 0.15)
+    private var debugCalHeadFilter = EyeTermEMAFilter(alpha: 0.15)
+    private var debugCalPupilFilter = EyeTermEMAFilter(alpha: 0.15)
+    private var debugRawFusedFilter = EyeTermEMAFilter(alpha: 0.15)
+    private var debugCalFusedFilter = EyeTermEMAFilter(alpha: 0.15)
 
     init(appState: AppState) {
         self.appState = appState
@@ -45,9 +54,19 @@ final class AppCoordinator {
     private func wireCallbacks() {
         activeBackend.onGazeUpdate = { [weak self] quadrant, confidence in
             guard let self else { return }
+            if quadrant != self.appState.activeQuadrant {
+                self.appState.dwellingQuadrant = nil
+                self.appState.dwellProgress = 0
+            }
             self.appState.activeQuadrant = quadrant
             self.appState.gazeConfidence = confidence
             self.dwellTimer.update(quadrant: quadrant)
+        }
+
+        dwellTimer.onDwellProgress = { [weak self] quadrant, progress in
+            guard let self else { return }
+            self.appState.dwellingQuadrant = quadrant
+            self.appState.dwellProgress = progress
         }
 
         dwellTimer.onDwellConfirmed = { [weak self] quadrant in
@@ -59,6 +78,16 @@ final class AppCoordinator {
                 } catch {
                     self.appState.addError("Focus failed: \(error.localizedDescription)")
                 }
+            }
+        }
+
+        voiceEngine.onAudioLevel = { [weak self] level, speaking in
+            guard let self else { return }
+            self.appState.audioLevel = level
+            self.appState.isSpeaking = speaking
+            self.appState.audioLevelHistory.append(level)
+            if self.appState.audioLevelHistory.count > 64 {
+                self.appState.audioLevelHistory.removeFirst()
             }
         }
 
@@ -85,9 +114,10 @@ final class AppCoordinator {
             }
         }
 
-        calibrationManager.onCalibrationComplete = { [weak self] transform in
+        calibrationManager.onCalibrationComplete = { [weak self] result in
             guard let self else { return }
-            self.activeBackend.calibrationTransform = transform
+            self.activeBackend.headCalibrationTransform = result.headTransform
+            self.activeBackend.pupilCalibrationTransform = result.pupilTransform
             self.appState.isCalibrated = true
             self.dismissCalibrationOverlay()
         }
@@ -99,13 +129,12 @@ final class AppCoordinator {
 
         activeBackend.onRawGazePoint = { [weak self] point in
             guard let self else { return }
-            self.appState.rawGazePoint = point
-            self.calibrationManager.recordSample(gazePoint: point)
+            self.appState.rawGazePoint = self.debugRawFusedFilter.update(point)
         }
 
         activeBackend.onCalibratedGazePoint = { [weak self] point in
             guard let self else { return }
-            self.appState.calibratedGazePoint = point
+            self.appState.calibratedGazePoint = self.debugCalFusedFilter.update(point)
         }
 
         activeBackend.onSmoothedGazePoint = { [weak self] point in
@@ -119,6 +148,14 @@ final class AppCoordinator {
             self.appState.headPitch = diagnostics.headPitch
             self.appState.pupilOffsetX = diagnostics.pupilOffsetX
             self.appState.pupilOffsetY = diagnostics.pupilOffsetY
+            self.appState.headGazePoint = self.debugHeadFilter.update(diagnostics.headGazePoint)
+            self.appState.pupilGazePoint = self.debugPupilFilter.update(diagnostics.pupilGazePoint)
+            self.appState.calibratedHeadGazePoint = self.debugCalHeadFilter.update(diagnostics.calibratedHeadGazePoint)
+            self.appState.calibratedPupilGazePoint = self.debugCalPupilFilter.update(diagnostics.calibratedPupilGazePoint)
+            self.calibrationManager.recordSample(
+                headPoint: diagnostics.headGazePoint,
+                pupilPoint: diagnostics.pupilGazePoint
+            )
         }
 
         activeBackend.onFaceObservation = { [weak self] faceData in
@@ -144,6 +181,7 @@ final class AppCoordinator {
             _ = appState.headWeight
             _ = appState.executeKeyword
             _ = appState.overlayMode
+            _ = appState.debugSmoothing
         } onChange: { [weak self] in
             DispatchQueue.main.async {
                 self?.pushAllSettings()
@@ -159,6 +197,13 @@ final class AppCoordinator {
         commandParser.executeKeyword = appState.executeKeyword
         activeBackend.smoothingAlpha = appState.gazeSmoothing
         activeBackend.headWeight = appState.headWeight
+        let da = appState.debugSmoothing
+        debugHeadFilter.alpha = da
+        debugPupilFilter.alpha = da
+        debugCalHeadFilter.alpha = da
+        debugCalPupilFilter.alpha = da
+        debugRawFusedFilter.alpha = da
+        debugCalFusedFilter.alpha = da
         updateOverlayVisibility()
     }
 
@@ -244,6 +289,7 @@ final class AppCoordinator {
         do {
             try await voiceEngine.start()
             appState.isVoiceActive = true
+            showWaveformPanel()
         } catch {
             appState.addError("Voice engine failed: \(error.localizedDescription)")
         }
@@ -253,6 +299,7 @@ final class AppCoordinator {
     func stopVoice() {
         voiceEngine.stop()
         appState.isVoiceActive = false
+        dismissWaveformPanel()
         updateStatus()
     }
 
@@ -315,7 +362,8 @@ final class AppCoordinator {
         if !appState.isEyeTrackingActive {
             startEyeTracking()
         }
-        activeBackend.calibrationTransform = nil
+        activeBackend.headCalibrationTransform = nil
+        activeBackend.pupilCalibrationTransform = nil
         calibrationManager.startCalibration()
         showCalibrationOverlay()
     }
@@ -399,6 +447,45 @@ final class AppCoordinator {
         cameraPreviewWindow?.close()
         cameraPreviewWindow = nil
         appState.isCameraPreviewVisible = false
+    }
+
+    // MARK: - Waveform Panel
+
+    private func showWaveformPanel() {
+        guard waveformWindow == nil else { return }
+
+        let waveformView = AudioWaveformView()
+            .environment(appState)
+
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 280, height: 60),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        panel.level = .floating
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.ignoresMouseEvents = true
+
+        // Position at bottom center of screen
+        if let screen = NSScreen.main {
+            let screenFrame = screen.visibleFrame
+            let x = screenFrame.midX - 140
+            let y = screenFrame.minY + 16
+            panel.setFrameOrigin(NSPoint(x: x, y: y))
+        }
+
+        panel.contentView = NSHostingView(rootView: waveformView)
+        panel.orderFrontRegardless()
+        waveformWindow = panel
+    }
+
+    private func dismissWaveformPanel() {
+        waveformWindow?.close()
+        waveformWindow = nil
     }
 
     // MARK: - Error Details
