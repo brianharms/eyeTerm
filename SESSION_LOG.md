@@ -128,6 +128,63 @@ Continue gaze tracking pipeline development — fix bugs, add independent head/p
 
 ---
 
+## Session — 2026-02-18 22:45
+
+### Goal
+Settings UI polish, overlay improvements, fix dwell timer, fix terminal focus targeting.
+
+### Accomplished
+- **Settings UI polish**: Legend rows evenly spaced, launch command label updated, placeholder removed, "Launch Terminals" button added, manual focus + test command disabled when terminals not set up
+- **Overlay legend visibility toggles**: Checkboxes for raw/calibrated/smoothed layers that show/hide corresponding debug overlay elements
+- **Fusion circle improvements**: Changed to solid black, positioned directly behind raw/calibrated fused gaze dots (not on interpolated line), max size 3x larger (48pt)
+- **Smoothed circle size slider**: Separate from fusion dot, up to 48pt
+- **Subtle overlay**: Added smoothed gaze circle with dedicated size (up to 100px) and opacity sliders, removed corner bracket crosshairs
+- **Debug overlay**: Added dwell countdown ring with percentage, "Active"/"Focused" pills in quadrant centers, adjustable debug line width slider, cyan focus border (40% opacity, 2pt), moved HUD panel down 100pts
+- **DwellTimer rewrite**: Fixed critical bug where hysteresis timer was reset every camera frame (~30fps), preventing progress from ever firing. Unified hysteresis+dwell into single continuous progress — countdown starts from first gaze frame entering a quadrant
+- **Terminal focus rewrite**: Replaced stale z-order index system with position-based lookup — queries all terminal window bounds via AppleScript and picks closest match to target quadrant. Fixes wrong-quadrant activation after any focus change
+- **Camera preview fix**: Auto-refreshes when eye tracking starts after preview was already open (was showing black)
+- **Focus error suppression**: Terminal focus skipped silently when terminals not launched
+- **Save Settings as Default button**: Writes current settings to `saved-defaults.json` for Claude to bake into AppState.swift on next build
+- **Voice backend refactor**: VoiceEngine split into VoiceAudioPipeline + VoiceTranscriptionBackend protocol with WhisperKit and WhisperCpp implementations
+
+### In Progress / Incomplete
+- User has not yet pressed "Save Settings as Default" to capture their preferred values
+- Position-based terminal focus not yet tested by user with actual terminal windows
+
+### Key Decisions
+- Unified dwell progress (hysteresis + dwell as single bar) rather than separate phases — gives immediate visual feedback
+- Position-based terminal focus using AppleScript `bounds of w` queries at focus time, not cached indices
+- Separate subtle overlay gaze size/opacity from debug overlay smoothed circle size — they serve different purposes
+- Black fusion circles placed at actual pipeline fused gaze position (behind red/green dots), not at interpolated head/pupil line position
+
+### Files Changed
+- `Sources/GazeTerminal/App/AppState.swift` — added smoothedCircleSize, showRawOverlay, showCalibratedOverlay, showSmoothedOverlay, debugLineWidth, subtleGazeSize, subtleGazeOpacity, saveSettingsAsDefaults()
+- `Sources/GazeTerminal/App/AppCoordinator.swift` — camera preview refresh on tracking start, isTerminalSetup guard on dwell confirm
+- `Sources/GazeTerminal/UI/SettingsView.swift` — legend toggles, new sliders, launch button, save defaults button, control disabling
+- `Sources/GazeTerminal/UI/GazeOverlayView.swift` — visibility guards, dwell ring, Active/Focused labels, fusion circle repositioning, subtle overlay gaze circle, removed corner brackets
+- `Sources/GazeTerminal/Utilities/DwellTimer.swift` — complete rewrite with unified progress
+- `Sources/GazeTerminal/Terminal/TerminalManager.swift` — position-based window lookup for focus/typeText/sendReturn
+- `Sources/GazeTerminal/Voice/VoiceAudioPipeline.swift` — new (split from VoiceEngine)
+- `Sources/GazeTerminal/Voice/VoiceTranscriptionBackend.swift` — new protocol
+- `Sources/GazeTerminal/Voice/WhisperCppBackend.swift` — new
+- `Sources/GazeTerminal/Voice/WhisperCppModelManager.swift` — new
+- `Sources/GazeTerminal/Voice/WhisperKitBackend.swift` — new
+
+### Known Issues
+- AppleScript window bounds query adds slight latency to each focus call (runs on every dwell confirmation)
+- Terminal focus only tested conceptually — user needs to verify correct quadrant targeting with actual terminals launched
+- `build-debug/` directory not committed (large build artifacts)
+
+### Running Services
+- eyeTerm app likely running in menu bar from last launch
+
+### Next Steps
+- Test terminal focus targeting with all four terminals launched
+- Press "Save Settings as Default" once happy with slider values, then ask Claude to apply them to AppState.swift
+- Consider caching window bounds briefly to reduce AppleScript overhead on rapid quadrant switches
+
+---
+
 ## TODO — Future Features
 
 ### L2CS-Net CoreML Backend (Third Tracking Backend)

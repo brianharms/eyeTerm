@@ -298,7 +298,7 @@ private struct DebugOverlayContent: View {
         .foregroundStyle(.green)
         .padding(8)
         .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 6))
-        .position(x: 100, y: 80)
+        .position(x: 100, y: 180)
     }
 
     private func quadrantRect(_ quadrant: ScreenQuadrant, midX: CGFloat, midY: CGFloat) -> CGRect {
