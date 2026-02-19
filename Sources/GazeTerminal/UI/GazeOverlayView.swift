@@ -7,11 +7,11 @@ struct EyeTermOverlayView: View {
         GeometryReader { geometry in
             let size = geometry.size
             ZStack {
-                if appState.overlayMode == .subtle || appState.overlayMode == .debug {
-                    SubtleOverlayContent(size: size, appState: appState)
+                if appState.overlayMode == .subtle {
+                    SubtleOverlayContent(size: size)
                 }
                 if appState.overlayMode == .debug {
-                    DebugOverlayContent(size: size, appState: appState)
+                    DebugOverlayContent(size: size)
                 }
             }
         }
@@ -23,7 +23,7 @@ struct EyeTermOverlayView: View {
 
 private struct SubtleOverlayContent: View {
     let size: CGSize
-    let appState: AppState
+    @Environment(AppState.self) private var appState
 
     var body: some View {
         let midX = size.width / 2
@@ -42,7 +42,7 @@ private struct SubtleOverlayContent: View {
             let progress = isDwelling ? appState.dwellProgress : 0
 
             // Dwell progress border
-            if isDwelling && !isFocused && progress > 0 {
+            if isDwelling && !isFocused && progress > 0 && appState.showActiveState {
                 let rect = quadrantRect(quadrant, midX: midX, midY: midY)
                 Rectangle()
                     .strokeBorder(.green.opacity(0.4 * progress), lineWidth: 1 + 1 * progress)
@@ -51,7 +51,7 @@ private struct SubtleOverlayContent: View {
             }
 
             // Confirmed flash border
-            if isFocused {
+            if isFocused && appState.showQuadrantHighlighting {
                 let rect = quadrantRect(quadrant, midX: midX, midY: midY)
                 Rectangle()
                     .strokeBorder(.green.opacity(0.85), lineWidth: 2)
@@ -76,7 +76,7 @@ private struct SubtleOverlayContent: View {
 
 private struct DebugOverlayContent: View {
     let size: CGSize
-    let appState: AppState
+    @Environment(AppState.self) private var appState
 
     var body: some View {
         let midX = size.width / 2
@@ -89,53 +89,57 @@ private struct DebugOverlayContent: View {
         let smoothY = appState.smoothedGazePoint.y * size.height
 
         // Quadrant fills
-        ForEach(ScreenQuadrant.allCases) { quadrant in
-            let rect = quadrantRect(quadrant, midX: midX, midY: midY)
-            let isActive = quadrant == appState.activeQuadrant
-            let isFocused = quadrant == appState.focusedQuadrant
-            let isDwelling = quadrant == appState.dwellingQuadrant
-            let progress = isDwelling ? appState.dwellProgress : 0
+        if appState.showQuadrantHighlighting {
+            ForEach(ScreenQuadrant.allCases) { quadrant in
+                let rect = quadrantRect(quadrant, midX: midX, midY: midY)
+                let isActive = quadrant == appState.activeQuadrant
+                let isFocused = quadrant == appState.focusedQuadrant
+                let isDwelling = quadrant == appState.dwellingQuadrant
+                let progress = isDwelling ? appState.dwellProgress : 0
 
-            if isFocused {
-                Rectangle()
-                    .fill(.green.opacity(0.15))
-                    .frame(width: rect.width, height: rect.height)
-                    .position(x: rect.midX, y: rect.midY)
-                    .animation(.easeOut(duration: 0.2), value: isFocused)
-                Rectangle()
-                    .strokeBorder(.cyan.opacity(0.4), lineWidth: 2)
-                    .frame(width: rect.width, height: rect.height)
-                    .position(x: rect.midX, y: rect.midY)
-                    .animation(.easeOut(duration: 0.2), value: isFocused)
-                Text("Focused")
-                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(Color.cyan.opacity(0.7), in: Capsule())
-                    .position(x: rect.midX, y: rect.midY)
-            } else if isActive {
-                Rectangle()
-                    .fill(.yellow.opacity(0.08))
-                    .frame(width: rect.width, height: rect.height)
-                    .position(x: rect.midX, y: rect.midY)
-                    .animation(.easeOut(duration: 0.15), value: isActive)
-
-                // Dwell countdown ring + percentage
-                ZStack {
-                    Circle()
-                        .stroke(Color(white: 0.3).opacity(0.5), lineWidth: 3)
-                        .frame(width: 40, height: 40)
-                    Circle()
-                        .trim(from: 0, to: progress)
-                        .stroke(.yellow, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                        .frame(width: 40, height: 40)
-                        .rotationEffect(.degrees(-90))
-                    Text("\(Int(progress * 100))%")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                if isFocused {
+                    Rectangle()
+                        .fill(.green.opacity(0.15))
+                        .frame(width: rect.width, height: rect.height)
+                        .position(x: rect.midX, y: rect.midY)
+                        .animation(.easeOut(duration: 0.2), value: isFocused)
+                    Rectangle()
+                        .strokeBorder(.cyan.opacity(0.4), lineWidth: 2)
+                        .frame(width: rect.width, height: rect.height)
+                        .position(x: rect.midX, y: rect.midY)
+                        .animation(.easeOut(duration: 0.2), value: isFocused)
+                    Text("Focused")
+                        .font(.system(size: 14, weight: .semibold, design: .monospaced))
                         .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color.cyan.opacity(0.7), in: Capsule())
+                        .position(x: rect.midX, y: rect.midY)
+                } else if isActive {
+                    Rectangle()
+                        .fill(.yellow.opacity(0.08))
+                        .frame(width: rect.width, height: rect.height)
+                        .position(x: rect.midX, y: rect.midY)
+                        .animation(.easeOut(duration: 0.15), value: isActive)
+
+                    // Dwell countdown ring + percentage
+                    if appState.showActiveState {
+                        ZStack {
+                            Circle()
+                                .stroke(Color(white: 0.3).opacity(0.5), lineWidth: 3)
+                                .frame(width: 40, height: 40)
+                            Circle()
+                                .trim(from: 0, to: progress)
+                                .stroke(.yellow, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                                .frame(width: 40, height: 40)
+                                .rotationEffect(.degrees(-90))
+                            Text("\(Int(progress * 100))%")
+                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(.white)
+                        }
+                        .position(x: rect.midX, y: rect.midY)
+                    }
                 }
-                .position(x: rect.midX, y: rect.midY)
             }
         }
 
@@ -163,6 +167,12 @@ private struct DebugOverlayContent: View {
             let pupilPX = appState.pupilGazePoint.x * size.width
             let pupilPY = appState.pupilGazePoint.y * size.height
 
+            Circle()
+                .fill(.black)
+                .frame(width: appState.fusionDotSize, height: appState.fusionDotSize)
+                .scaleEffect(appState.overlayIconSize)
+                .position(x: rawX, y: rawY)
+
             Path { path in
                 path.move(to: CGPoint(x: pupilPX, y: pupilPY))
                 path.addLine(to: CGPoint(x: headPX, y: headPY))
@@ -182,12 +192,6 @@ private struct DebugOverlayContent: View {
                 .position(x: pupilPX, y: pupilPY)
 
             Circle()
-                .fill(.black)
-                .frame(width: appState.fusionDotSize, height: appState.fusionDotSize)
-                .scaleEffect(appState.overlayIconSize)
-                .position(x: rawX, y: rawY)
-
-            Circle()
                 .fill(.red.opacity(0.6))
                 .frame(width: 6, height: 6)
                 .scaleEffect(appState.overlayIconSize)
@@ -200,6 +204,12 @@ private struct DebugOverlayContent: View {
             let calHeadPY = appState.calibratedHeadGazePoint.y * size.height
             let calPupilPX = appState.calibratedPupilGazePoint.x * size.width
             let calPupilPY = appState.calibratedPupilGazePoint.y * size.height
+
+            Circle()
+                .fill(.black)
+                .frame(width: appState.fusionDotSize, height: appState.fusionDotSize)
+                .scaleEffect(appState.overlayIconSize)
+                .position(x: calX, y: calY)
 
             Path { path in
                 path.move(to: CGPoint(x: calPupilPX, y: calPupilPY))
@@ -218,12 +228,6 @@ private struct DebugOverlayContent: View {
                 .foregroundStyle(.green.opacity(0.8))
                 .scaleEffect(appState.overlayIconSize)
                 .position(x: calPupilPX, y: calPupilPY)
-
-            Circle()
-                .fill(.black)
-                .frame(width: appState.fusionDotSize, height: appState.fusionDotSize)
-                .scaleEffect(appState.overlayIconSize)
-                .position(x: calX, y: calY)
 
             Circle()
                 .fill(.green.opacity(0.7))

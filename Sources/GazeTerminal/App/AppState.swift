@@ -47,6 +47,8 @@ final class AppState {
     var showRawOverlay: Bool = true
     var showCalibratedOverlay: Bool = true
     var showSmoothedOverlay: Bool = true
+    var showQuadrantHighlighting: Bool = true
+    var showActiveState: Bool = true
     var debugLineWidth: Double = 1.0
     var subtleGazeSize: Double = 20.0
     var subtleGazeOpacity: Double = 0.25
@@ -110,6 +112,8 @@ final class AppState {
             "showRawOverlay": showRawOverlay,
             "showCalibratedOverlay": showCalibratedOverlay,
             "showSmoothedOverlay": showSmoothedOverlay,
+            "showQuadrantHighlighting": showQuadrantHighlighting,
+            "showActiveState": showActiveState,
             "subtleGazeSize": subtleGazeSize,
             "subtleGazeOpacity": subtleGazeOpacity,
             "debugLineWidth": debugLineWidth,

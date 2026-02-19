@@ -314,6 +314,7 @@ final class AppCoordinator {
         appState.isEyeTrackingActive = false
         appState.activeQuadrant = nil
         dismissEyeTermOverlay()
+        dismissCameraPreview()
         updateStatus()
     }
 
@@ -479,7 +480,7 @@ final class AppCoordinator {
 
     private func updateOverlayVisibility() {
         if appState.overlayMode == .off {
-            dismissEyeTermOverlay()
+            eyeTermOverlayWindow?.orderOut(nil)
         } else {
             showEyeTermOverlay()
         }
@@ -488,7 +489,10 @@ final class AppCoordinator {
     // MARK: - eyeTerm Overlay
 
     private func showEyeTermOverlay() {
-        guard eyeTermOverlayWindow == nil else { return }
+        if let panel = eyeTermOverlayWindow {
+            panel.orderFrontRegardless()
+            return
+        }
         guard let screen = NSScreen.main else { return }
 
         let panel = NSPanel(

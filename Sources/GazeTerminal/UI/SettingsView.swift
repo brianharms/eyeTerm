@@ -12,6 +12,28 @@ struct SettingsView: View {
 
         Form {
             Section("Eye Tracking") {
+                HStack {
+                    Button {
+                        if state.isEyeTrackingActive {
+                            coordinator.stopEyeTracking()
+                        } else {
+                            coordinator.startEyeTracking()
+                        }
+                    } label: {
+                        Label(state.isEyeTrackingActive ? "Stop Eye Tracking" : "Start Eye Tracking",
+                              systemImage: state.isEyeTrackingActive ? "eye.slash" : "eye")
+                    }
+
+                    Spacer()
+
+                    Button {
+                        coordinator.startCalibration()
+                    } label: {
+                        Label("Calibrate", systemImage: "scope")
+                    }
+                    .disabled(!state.isEyeTrackingActive)
+                }
+
                 Picker("Tracking Engine", selection: $state.trackingBackend) {
                     ForEach(TrackingBackend.allCases) { backend in
                         Text(backend.rawValue).tag(backend)
@@ -195,9 +217,23 @@ struct SettingsView: View {
                         }
                     }
                 }
+
+                Toggle("Quadrant Highlighting", isOn: $state.showQuadrantHighlighting)
+                Toggle("Active / Loading State", isOn: $state.showActiveState)
             }
 
             Section("Voice") {
+                Button {
+                    if state.isVoiceActive {
+                        coordinator.stopVoice()
+                    } else {
+                        Task { await coordinator.startVoice() }
+                    }
+                } label: {
+                    Label(state.isVoiceActive ? "Stop Voice" : "Start Voice",
+                          systemImage: state.isVoiceActive ? "mic.slash" : "mic")
+                }
+
                 Picker("Voice Engine", selection: $state.voiceBackend) {
                     ForEach(VoiceBackend.allCases) { backend in
                         Text(backend.rawValue).tag(backend)
