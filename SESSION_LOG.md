@@ -185,6 +185,53 @@ Settings UI polish, overlay improvements, fix dwell timer, fix terminal focus ta
 
 ---
 
+## Session — 2026-02-19 03:53
+
+### Goal
+Debug overlay visual fixes: Z-order of fusion circles, hide redundant subtle circle in debug mode, add quadrant/dwell toggle controls, and add start/stop buttons for eye tracking and voice in settings.
+
+### Accomplished
+- **Black fusion circle Z-order**: Moved black circles to render before lines/icons in both raw and calibrated overlay layers so they sit underneath
+- **Subtle circle hidden in debug mode**: `SubtleOverlayContent` now only renders for `.subtle` mode, not `.debug` (was redundant)
+- **Quadrant highlighting toggle**: New `showQuadrantHighlighting` bool in AppState wraps the entire quadrant fills ForEach in DebugOverlayContent and the focused flash border in SubtleOverlayContent
+- **Active/dwell state toggle**: New `showActiveState` bool wraps the dwell countdown ring + percentage in debug mode and the dwell progress border in subtle mode
+- **Settings toggles**: Two new checkboxes in Eye-Tracking Visualization section for the above
+- **Observation tracking fix**: Child overlay views (`SubtleOverlayContent`, `DebugOverlayContent`) changed from `let appState: AppState` to `@Environment(AppState.self)` — fixes SwiftUI skipping body re-evaluation when the reference pointer hasn't changed
+- **Overlay window preservation**: `updateOverlayVisibility()` now uses `orderOut(nil)` instead of `close()` when mode switches to `.off`, and `orderFrontRegardless()` when switching back. Keeps the NSPanel and its SwiftUI observation registrations alive
+- **Start/Stop Eye Tracking button**: Added to Eye Tracking settings section with eye/eye.slash icons
+- **Calibrate button**: Added next to Start Eye Tracking, disabled when tracking isn't active
+- **Start/Stop Voice button**: Added to Voice settings section with mic/mic.slash icons
+- **Camera cleanup on stop**: `stopEyeTracking()` now calls `dismissCameraPreview()` to close the camera window
+- **Both new properties saved**: `showQuadrantHighlighting` and `showActiveState` added to `saveSettingsAsDefaults()`
+
+### In Progress / Incomplete
+- Nothing left incomplete — all planned changes implemented and building
+
+### Key Decisions
+- Used `@Environment` instead of `let` for observable objects in child views — this is the correct pattern with `@Observable` to avoid SwiftUI's structural identity optimization killing observation tracking
+- Chose `orderOut`/`orderFront` over `close`/recreate for overlay panel — avoids observation tracking loss across mode switches
+- Calibrate button disabled when eye tracking inactive (requires camera session)
+- Camera preview dismissed on eye tracking stop since the camera session is no longer running
+
+### Files Changed
+- `Sources/GazeTerminal/UI/GazeOverlayView.swift` — Z-order fix, @Environment migration, subtle mode conditional, quadrant/dwell guards
+- `Sources/GazeTerminal/App/AppState.swift` — showQuadrantHighlighting, showActiveState properties + saveSettingsAsDefaults
+- `Sources/GazeTerminal/UI/SettingsView.swift` — start/stop eye tracking, calibrate, start/stop voice buttons, quadrant/active toggles
+- `Sources/GazeTerminal/App/AppCoordinator.swift` — overlay window preservation (orderOut vs close), camera dismiss on stop
+
+### Known Issues
+- None new. Existing issues from prior sessions still apply (ad-hoc signing, hardened runtime off)
+
+### Running Services
+- eyeTerm app is running in the menu bar (last launched this session)
+
+### Next Steps
+- Test the overlay toggle controls (quadrant highlighting on/off, active state on/off)
+- Verify overlay renders reliably across mode switches (debug → off → debug) with the observation fix
+- Test start/stop buttons for eye tracking and voice from settings
+
+---
+
 ## TODO — Future Features
 
 ### L2CS-Net CoreML Backend (Third Tracking Backend)
