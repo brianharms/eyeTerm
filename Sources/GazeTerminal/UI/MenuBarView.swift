@@ -1,11 +1,19 @@
 import SwiftUI
 
+private struct CompactMenuButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.5 : 1.0)
+            .contentShape(Rectangle())
+    }
+}
+
 struct MenuBarView: View {
     @Environment(AppState.self) private var appState
     @Environment(AppCoordinator.self) private var coordinator
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 0) {
             // ── App Identity + Status ──
             Text("eyeTerm")
                 .font(.caption)
@@ -18,7 +26,6 @@ struct MenuBarView: View {
                 Text(appState.statusMessage)
                     .font(.caption)
                     .fontWeight(.medium)
-                Spacer()
                 if appState.isCalibrated {
                     Label("Calibrated", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
@@ -27,108 +34,86 @@ struct MenuBarView: View {
             }
 
             // ── Eye Tracking ──
-            Divider()
             sectionHeader("EYE TRACKING")
 
-            Group {
-                HStack(spacing: 6) {
-                    Button {
-                        if appState.isEyeTrackingActive {
-                            coordinator.stopEyeTracking()
-                        } else {
-                            coordinator.startEyeTracking()
-                        }
-                    } label: {
-                        Label(
-                            appState.isEyeTrackingActive ? "Stop" : "Start",
-                            systemImage: appState.isEyeTrackingActive ? "eye.slash" : "eye"
-                        )
-                    }
-                    .buttonStyle(.borderless)
-
-                    Button {
-                        coordinator.startCalibration()
-                    } label: {
-                        Label("Calibrate", systemImage: "scope")
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(!appState.isEyeTrackingActive)
-
-                    Spacer()
-
+            HStack(spacing: 6) {
+                Button {
                     if appState.isEyeTrackingActive {
-                        quadrantLabel
+                        coordinator.stopEyeTracking()
+                    } else {
+                        coordinator.startEyeTracking()
                     }
+                } label: {
+                    Label(
+                        appState.isEyeTrackingActive ? "Stop" : "Start",
+                        systemImage: appState.isEyeTrackingActive ? "eye.slash" : "eye"
+                    )
                 }
-                .font(.caption)
+                .buttonStyle(CompactMenuButtonStyle())
+
+                Button {
+                    coordinator.startCalibration()
+                } label: {
+                    Label("Calibrate", systemImage: "scope")
+                }
+                .buttonStyle(CompactMenuButtonStyle())
+                .disabled(!appState.isEyeTrackingActive)
+
+                if appState.isEyeTrackingActive {
+                    quadrantLabel
+                }
             }
-            .padding(.bottom, 6)
+            .font(.caption)
 
             // ── Voice ──
-            Divider()
-                .padding(.vertical, 4)
             sectionHeader("VOICE")
 
-            Group {
-                HStack(spacing: 6) {
-                    Button {
-                        if appState.isVoiceActive {
-                            coordinator.stopVoice()
-                        } else {
-                            Task { await coordinator.startVoice() }
-                        }
-                    } label: {
-                        Label(
-                            appState.isVoiceActive ? "Stop" : "Start",
-                            systemImage: appState.isVoiceActive ? "mic.slash" : "mic"
-                        )
-                    }
-                    .buttonStyle(.borderless)
-                    .font(.caption)
-
+            HStack(spacing: 6) {
+                Button {
                     if appState.isVoiceActive {
-                        AudioLevelView(level: appState.audioLevel, isSpeaking: appState.isSpeaking)
+                        coordinator.stopVoice()
+                    } else {
+                        Task { await coordinator.startVoice() }
                     }
+                } label: {
+                    Label(
+                        appState.isVoiceActive ? "Stop" : "Start",
+                        systemImage: appState.isVoiceActive ? "mic.slash" : "mic"
+                    )
+                }
+                .buttonStyle(CompactMenuButtonStyle())
+                .font(.caption)
 
-                    Spacer()
+                if appState.isVoiceActive {
+                    AudioLevelView(level: appState.audioLevel, isSpeaking: appState.isSpeaking)
                 }
 
-                if !appState.lastTranscription.isEmpty {
-                    Text(appState.lastTranscription)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
+                whisperModelStatus
             }
-            .padding(.bottom, 6)
+            .fixedSize(horizontal: false, vertical: true)
 
             // ── Terminal ──
-            Divider()
-                .padding(.vertical, 4)
             sectionHeader("TERMINAL")
 
-            Group {
-                Button {
-                    Task { await coordinator.setupTerminals() }
-                } label: {
-                    Label("Launch Terminals", systemImage: "terminal")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .buttonStyle(.borderless)
-                .font(.caption)
+            Button {
+                Task { await coordinator.setupTerminals() }
+            } label: {
+                Label("Launch Terminals", systemImage: "terminal")
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.bottom, 6)
+            .buttonStyle(.borderless)
+            .controlSize(.mini)
+            .font(.caption)
 
             // ── Utilities ──
             Divider()
-                .padding(.vertical, 2)
+                .padding(.vertical, 4)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 2) {
                 SettingsLink {
                     Label("Settings", systemImage: "gear")
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(CompactMenuButtonStyle())
                 .onHover { _ in }
                 .simultaneousGesture(TapGesture().onEnded {
                     NSApp.activate(ignoringOtherApps: true)
@@ -139,7 +124,7 @@ struct MenuBarView: View {
                 } label: {
                     Label("Overlay: \(appState.overlayMode.displayName)", systemImage: overlayIcon)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(CompactMenuButtonStyle())
 
                 Button {
                     if appState.isCameraPreviewVisible {
@@ -153,14 +138,13 @@ struct MenuBarView: View {
                         systemImage: appState.isCameraPreviewVisible ? "video.fill" : "video"
                     )
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(CompactMenuButtonStyle())
             }
             .font(.caption)
-            .padding(.bottom, 4)
 
             // ── Quit ──
             Divider()
-                .padding(.vertical, 2)
+                .padding(.vertical, 4)
 
             Button {
                 coordinator.stopAll()
@@ -172,12 +156,13 @@ struct MenuBarView: View {
                 Label("Quit", systemImage: "xmark.circle")
             }
             .buttonStyle(.borderless)
+            .controlSize(.mini)
             .font(.caption)
 
             // ── Errors (only if present) ──
             if !appState.errors.isEmpty {
                 Divider()
-                    .padding(.top, 4)
+                    .padding(.vertical, 4)
                 Button {
                     let allErrors = appState.errors.joined(separator: "\n")
                     NSPasteboard.general.clearContents()
@@ -186,12 +171,12 @@ struct MenuBarView: View {
                     Label("Errors[\(appState.errors.count)]", systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(CompactMenuButtonStyle())
                 .font(.caption)
             }
         }
         .padding(12)
-        .frame(width: 260)
+        .frame(width: 300)
     }
 
     // MARK: - Helpers
@@ -206,17 +191,21 @@ struct MenuBarView: View {
 
     @ViewBuilder
     private func sectionHeader(_ title: String) -> some View {
-        HStack(spacing: 8) {
-            Text(title)
-                .font(.system(size: 10, weight: .heavy, design: .default))
-                .tracking(1.8)
-                .foregroundStyle(.secondary)
-            Rectangle()
-                .fill(Color.secondary.opacity(0.4))
-                .frame(height: 1)
+        VStack(alignment: .leading, spacing: 0) {
+            Divider()
+                .padding(.top, 4)
+            HStack(spacing: 8) {
+                Text(title)
+                    .font(.system(size: 10, weight: .heavy, design: .default))
+                    .tracking(1.8)
+                    .foregroundStyle(.secondary)
+                Rectangle()
+                    .fill(Color.secondary.opacity(0.4))
+                    .frame(height: 1)
+            }
+            .padding(.top, 3)
+            .padding(.bottom, 2)
         }
-        .padding(.top, 8)
-        .padding(.bottom, 4)
     }
 
     // MARK: - Subviews
@@ -228,6 +217,33 @@ struct MenuBarView: View {
             return .yellow
         } else {
             return .red
+        }
+    }
+
+    @ViewBuilder
+    private var whisperModelStatus: some View {
+        switch appState.voiceModelState {
+        case .idle:
+            EmptyView()
+        case .loading:
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                ProgressView()
+                    .controlSize(.mini)
+                    .alignmentGuide(.firstTextBaseline) { d in d[.bottom] }
+                Text("Loading model...")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        case .ready:
+            Label("\(appState.voiceBackend.rawValue) ready", systemImage: "checkmark.circle.fill")
+                .font(.caption2)
+                .foregroundStyle(.green)
+                .lineLimit(1)
+        case .failed:
+            Label("Model failed", systemImage: "xmark.circle.fill")
+                .font(.caption2)
+                .foregroundStyle(.red)
+                .lineLimit(1)
         }
     }
 

@@ -1,65 +1,64 @@
 import AppKit
 import Foundation
 
+enum PreferredTerminal: String, CaseIterable, Identifiable {
+    case iTerm2 = "iTerm2"
+    case terminal = "Terminal"
+
+    var id: String { rawValue }
+
+    var bundleIdentifier: String {
+        switch self {
+        case .iTerm2: return "com.googlecode.iterm2"
+        case .terminal: return "com.apple.Terminal"
+        }
+    }
+
+    var appName: String {
+        switch self {
+        case .iTerm2: return "iTerm2"
+        case .terminal: return "Terminal"
+        }
+    }
+}
+
 final class TerminalManager {
 
     // MARK: - State
 
     private(set) var isSetup = false
+    var preferredTerminal: PreferredTerminal = .iTerm2
+    var launchCommand: String = "claude --dangerously-skip-permissions"
 
-    /// Tracks the iTerm2 window index (1-based, newest = 1) for each quadrant.
+    /// Tracks the window index (1-based, newest = 1) for each quadrant.
     /// After setup the windows are ordered so that the first created has the highest index.
     private var windowIndices: [ScreenQuadrant: Int] = [:]
 
     // MARK: - Setup
 
-    /// Launch iTerm2, create four windows positioned in screen quadrants, and run "cla" in each.
+    /// Launch the preferred terminal, create four windows positioned in screen quadrants, and run the launch command in each.
     func setupTerminals() async throws {
         guard !isSetup else { return }
 
-        // Make sure iTerm2 is running.
-        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.googlecode.iterm2") else {
-            throw TerminalError.iTermNotInstalled
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: preferredTerminal.bundleIdentifier) else {
+            throw TerminalError.terminalNotInstalled(preferredTerminal)
         }
 
         let config = NSWorkspace.OpenConfiguration()
         config.activates = true
         try await NSWorkspace.shared.openApplication(at: url, configuration: config)
 
-        // Small delay so iTerm2 finishes launching.
         try await Task.sleep(for: .seconds(1))
 
-        // Count existing windows so we can track our new ones by ID.
-        let countResult = try await AppleScriptBridge.runAsync("""
-            tell application "iTerm2"
-                count of windows
-            end tell
-        """)
-        let existingWindowCount = Int(countResult ?? "0") ?? 0
-
-        // Create one window per quadrant. We iterate in a fixed order and record each
-        // window's index after all four are created.
         let orderedQuadrants: [ScreenQuadrant] = [.topLeft, .topRight, .bottomLeft, .bottomRight]
 
-        for quadrant in orderedQuadrants {
-            let bounds = WindowLayout.boundsForQuadrant(quadrant)
-            let script = """
-                tell application "iTerm2"
-                    create window with default profile
-                    set bounds of current window to {\(bounds.left), \(bounds.top), \(bounds.right), \(bounds.bottom)}
-                    tell current session of current window
-                        write text "cla"
-                    end tell
-                end tell
-            """
-            try await AppleScriptBridge.runAsync(script)
-            try await Task.sleep(for: .milliseconds(400))
+        switch preferredTerminal {
+        case .iTerm2:
+            try await setupITerm2(quadrants: orderedQuadrants)
+        case .terminal:
+            try await setupAppleTerminal(quadrants: orderedQuadrants)
         }
 
-        // After creating 4 windows the most recently created window is index 1.
-        // Existing windows are pushed to higher indices.
-        // We created them in order: topLeft, topRight, bottomLeft, bottomRight
-        // so bottomRight is newest (index 1) and topLeft is oldest (index 4).
         for (offset, quadrant) in orderedQuadrants.enumerated() {
             windowIndices[quadrant] = orderedQuadrants.count - offset
         }
@@ -67,46 +66,113 @@ final class TerminalManager {
         isSetup = true
     }
 
+    private func setupITerm2(quadrants: [ScreenQuadrant]) async throws {
+        let escapedCmd = escapeForAppleScript(launchCommand)
+        for quadrant in quadrants {
+            let bounds = WindowLayout.boundsForQuadrant(quadrant)
+            let script = """
+                tell application "iTerm2"
+                    create window with default profile
+                    set bounds of current window to {\(bounds.left), \(bounds.top), \(bounds.right), \(bounds.bottom)}
+                    tell current session of current window
+                        write text "\(escapedCmd)"
+                    end tell
+                end tell
+            """
+            try await AppleScriptBridge.runAsync(script)
+            try await Task.sleep(for: .milliseconds(400))
+        }
+    }
+
+    private func setupAppleTerminal(quadrants: [ScreenQuadrant]) async throws {
+        let escapedCmd = escapeForAppleScript(launchCommand)
+        for quadrant in quadrants {
+            let bounds = WindowLayout.boundsForQuadrant(quadrant)
+            let script = """
+                tell application "Terminal"
+                    do script "\(escapedCmd)"
+                    set bounds of front window to {\(bounds.left), \(bounds.top), \(bounds.right), \(bounds.bottom)}
+                end tell
+            """
+            try await AppleScriptBridge.runAsync(script)
+            try await Task.sleep(for: .milliseconds(400))
+        }
+    }
+
     // MARK: - Focus
 
-    /// Bring the terminal window for the given quadrant to the front.
+    /// Bring the terminal window for the given quadrant to the front by matching screen position.
     func focusTerminal(quadrant: ScreenQuadrant) async throws {
-        let index = try windowIndex(for: quadrant)
-        let script = """
-            tell application "iTerm2"
-                activate
-                select window \(index)
-            end tell
-        """
-        try await AppleScriptBridge.runAsync(script)
+        let index = try await findWindowIndex(for: quadrant)
+        let app = preferredTerminal.appName
+        let focusScript: String
+        switch preferredTerminal {
+        case .iTerm2:
+            focusScript = """
+                tell application "\(app)"
+                    activate
+                    select window \(index)
+                end tell
+            """
+        case .terminal:
+            focusScript = """
+                tell application "\(app)"
+                    activate
+                    set index of window \(index) to 1
+                end tell
+            """
+        }
+        try await AppleScriptBridge.runAsync(focusScript)
     }
 
     // MARK: - Input
 
     /// Type arbitrary text into the terminal session for the given quadrant.
     func typeText(_ text: String, in quadrant: ScreenQuadrant) async throws {
-        let index = try windowIndex(for: quadrant)
+        let index = try await findWindowIndex(for: quadrant)
         let escaped = escapeForAppleScript(text)
-        let script = """
-            tell application "iTerm2"
-                tell current session of window \(index)
-                    write text "\(escaped)" without newline
+        let app = preferredTerminal.appName
+        let script: String
+        switch preferredTerminal {
+        case .iTerm2:
+            script = """
+                tell application "\(app)"
+                    tell current session of window \(index)
+                        write text "\(escaped)" without newline
+                    end tell
                 end tell
-            end tell
-        """
+            """
+        case .terminal:
+            script = """
+                tell application "\(app)"
+                    do script "\(escaped)" in window \(index)
+                end tell
+            """
+        }
         try await AppleScriptBridge.runAsync(script)
     }
 
     /// Send an Enter keystroke to the terminal session for the given quadrant.
     func sendReturn(in quadrant: ScreenQuadrant) async throws {
-        let index = try windowIndex(for: quadrant)
-        let script = """
-            tell application "iTerm2"
-                tell current session of window \(index)
-                    write text ""
+        let index = try await findWindowIndex(for: quadrant)
+        let app = preferredTerminal.appName
+        let script: String
+        switch preferredTerminal {
+        case .iTerm2:
+            script = """
+                tell application "\(app)"
+                    tell current session of window \(index)
+                        write text ""
+                    end tell
                 end tell
-            end tell
-        """
+            """
+        case .terminal:
+            script = """
+                tell application "\(app)"
+                    do script "" in window \(index)
+                end tell
+            """
+        }
         try await AppleScriptBridge.runAsync(script)
     }
 
@@ -116,11 +182,11 @@ final class TerminalManager {
     func tearDown() async throws {
         guard isSetup else { return }
 
-        // Close in reverse index order (highest first) so indices stay valid.
+        let app = preferredTerminal.appName
         let sorted = windowIndices.values.sorted(by: >)
         for index in sorted {
             try? await AppleScriptBridge.runAsync("""
-                tell application "iTerm2"
+                tell application "\(app)"
                     close window \(index)
                 end tell
             """)
@@ -132,11 +198,50 @@ final class TerminalManager {
 
     // MARK: - Helpers
 
-    private func windowIndex(for quadrant: ScreenQuadrant) throws -> Int {
-        guard let index = windowIndices[quadrant] else {
+    /// Find the terminal window whose screen position is closest to the target quadrant.
+    private func findWindowIndex(for quadrant: ScreenQuadrant) async throws -> Int {
+        let app = preferredTerminal.appName
+        let target = WindowLayout.boundsForQuadrant(quadrant)
+        let targetMidX = (target.left + target.right) / 2
+        let targetMidY = (target.top + target.bottom) / 2
+
+        let findScript = """
+            tell application "\(app)"
+                set windowList to {}
+                repeat with w in windows
+                    set b to bounds of w
+                    set end of windowList to (item 1 of b as text) & "," & (item 2 of b as text) & "," & (item 3 of b as text) & "," & (item 4 of b as text)
+                end repeat
+                return windowList
+            end tell
+        """
+        guard let result = try await AppleScriptBridge.runAsync(findScript) else {
             throw TerminalError.windowNotFound(quadrant)
         }
-        return index
+
+        let entries = result.components(separatedBy: ", ")
+        var bestIndex = 0
+        var bestDistance = Int.max
+        for (i, entry) in entries.enumerated() {
+            let parts = entry.components(separatedBy: ",")
+            guard parts.count == 4,
+                  let l = Int(parts[0].trimmingCharacters(in: .whitespaces)),
+                  let t = Int(parts[1].trimmingCharacters(in: .whitespaces)),
+                  let r = Int(parts[2].trimmingCharacters(in: .whitespaces)),
+                  let b = Int(parts[3].trimmingCharacters(in: .whitespaces)) else { continue }
+            let midX = (l + r) / 2
+            let midY = (t + b) / 2
+            let dist = abs(midX - targetMidX) + abs(midY - targetMidY)
+            if dist < bestDistance {
+                bestDistance = dist
+                bestIndex = i + 1  // AppleScript windows are 1-indexed
+            }
+        }
+
+        guard bestIndex > 0 else {
+            throw TerminalError.windowNotFound(quadrant)
+        }
+        return bestIndex
     }
 
     /// Escape backslashes and double-quotes so the string is safe inside an AppleScript literal.
@@ -150,13 +255,13 @@ final class TerminalManager {
 // MARK: - Errors
 
 enum TerminalError: LocalizedError {
-    case iTermNotInstalled
+    case terminalNotInstalled(PreferredTerminal)
     case windowNotFound(ScreenQuadrant)
 
     var errorDescription: String? {
         switch self {
-        case .iTermNotInstalled:
-            return "iTerm2 is not installed. Please install it from https://iterm2.com"
+        case .terminalNotInstalled(let terminal):
+            return "\(terminal.rawValue) is not installed."
         case .windowNotFound(let quadrant):
             return "No managed terminal window found for \(quadrant.displayName)"
         }

@@ -170,6 +170,25 @@ struct WalkthroughView: View {
     private func goForward() {
         guard let next = WalkthroughStep(rawValue: stepIndex + 1) else { return }
         currentStep = next
+        skipGrantedPermissions()
+    }
+
+    private func skipGrantedPermissions() {
+        while true {
+            let shouldSkip: Bool
+            switch currentStep {
+            case .cameraPermission:
+                shouldSkip = Permissions.checkCamera() == .granted
+            case .microphonePermission:
+                shouldSkip = Permissions.checkMicrophone() == .granted
+            case .accessibilityPermission:
+                shouldSkip = Permissions.checkAccessibility()
+            default:
+                shouldSkip = false
+            }
+            guard shouldSkip, let next = WalkthroughStep(rawValue: currentStep.rawValue + 1) else { break }
+            currentStep = next
+        }
     }
 
     private func goBack() {

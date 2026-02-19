@@ -22,11 +22,6 @@ struct WalkthroughCompleteStep: View {
 
             // Menu bar icon hint with arrow
             VStack(spacing: 12) {
-                // Arrow pointing up-right toward menu bar
-                Image(systemName: "arrow.up.right")
-                    .font(.system(size: 32, weight: .medium))
-                    .foregroundStyle(.blue)
-
                 HStack(spacing: 10) {
                     Image(systemName: "eye")
                         .font(.system(size: 16, weight: .medium))
@@ -38,6 +33,11 @@ struct WalkthroughCompleteStep: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
+
+                // Arrow pointing up toward menu bar
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 32, weight: .medium))
+                    .foregroundStyle(.blue)
             }
             .padding(.top, 8)
 

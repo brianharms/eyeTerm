@@ -10,7 +10,7 @@ final class AppCoordinator {
     let terminalManager = TerminalManager()
     private(set) var activeBackend: EyeTrackingBackend
     let calibrationManager = CalibrationManager()
-    let voiceEngine = VoiceEngine()
+    private(set) var activeVoiceBackend: VoiceTranscriptionBackend
     let commandParser = CommandParser()
     let dwellTimer: DwellTimer
 
@@ -34,6 +34,9 @@ final class AppCoordinator {
         self.activeBackend = appState.trackingBackend == .mediaPipe
             ? MediaPipeBackend() as EyeTrackingBackend
             : EyeTermTracker() as EyeTrackingBackend
+        self.activeVoiceBackend = appState.voiceBackend == .whisperCpp
+            ? WhisperCppBackend() as VoiceTranscriptionBackend
+            : WhisperKitBackend() as VoiceTranscriptionBackend
         self.dwellTimer = DwellTimer(
             dwellThreshold: appState.dwellTimeThreshold,
             hysteresisDelay: appState.hysteresisDelay
@@ -72,6 +75,7 @@ final class AppCoordinator {
         dwellTimer.onDwellConfirmed = { [weak self] quadrant in
             guard let self else { return }
             self.appState.focusedQuadrant = quadrant
+            guard self.appState.isTerminalSetup else { return }
             Task {
                 do {
                     try await self.terminalManager.focusTerminal(quadrant: quadrant)
@@ -81,33 +85,50 @@ final class AppCoordinator {
             }
         }
 
-        voiceEngine.onAudioLevel = { [weak self] level, speaking in
+        activeVoiceBackend.onAudioLevel = { [weak self] level, speaking in
             guard let self else { return }
             self.appState.audioLevel = level
             self.appState.isSpeaking = speaking
             self.appState.audioLevelHistory.append(level)
-            if self.appState.audioLevelHistory.count > 64 {
+            if self.appState.audioLevelHistory.count > 21 {
                 self.appState.audioLevelHistory.removeFirst()
             }
         }
 
-        voiceEngine.onTranscription = { [weak self] text in
+        activeVoiceBackend.onModelState = { [weak self] state in
+            guard let self else { return }
+            self.appState.voiceModelState = state
+        }
+
+        activeVoiceBackend.onTranscription = { [weak self] text in
             guard let self else { return }
             self.appState.lastTranscription = text
+            self.appState.transcriptionHistory.append((text: text, timestamp: Date()))
+            let cutoff = Date().addingTimeInterval(-10)
+            self.appState.transcriptionHistory.removeAll { $0.timestamp < cutoff }
             let commands = self.commandParser.parse(text)
+            print("[AppCoordinator] Parsed \(commands.count) commands from: \"\(text)\"")
 
-            guard let quadrant = self.appState.focusedQuadrant else { return }
+            guard let quadrant = self.appState.focusedQuadrant else {
+                print("[AppCoordinator] No focused quadrant — transcription ignored. Use manual focus or eye tracking.")
+                return
+            }
+            guard self.terminalManager.isSetup else { return }
 
+            print("[AppCoordinator] Sending to \(quadrant.displayName)")
             Task {
                 for command in commands {
                     do {
                         switch command {
                         case .typeText(let str):
+                            print("[AppCoordinator] Typing: \"\(str)\"")
                             try await self.terminalManager.typeText(str, in: quadrant)
                         case .execute:
+                            print("[AppCoordinator] Sending Return")
                             try await self.terminalManager.sendReturn(in: quadrant)
                         }
                     } catch {
+                        print("[AppCoordinator] Command failed: \(error)")
                         self.appState.addError("Command failed: \(error.localizedDescription)")
                     }
                 }
@@ -182,6 +203,12 @@ final class AppCoordinator {
             _ = appState.executeKeyword
             _ = appState.overlayMode
             _ = appState.debugSmoothing
+            _ = appState.micSensitivity
+            _ = appState.voiceBackend
+            _ = appState.overlayIconSize
+            _ = appState.fusionDotSize
+            _ = appState.preferredTerminal
+            _ = appState.terminalLaunchCommand
         } onChange: { [weak self] in
             DispatchQueue.main.async {
                 self?.pushAllSettings()
@@ -197,6 +224,7 @@ final class AppCoordinator {
         commandParser.executeKeyword = appState.executeKeyword
         activeBackend.smoothingAlpha = appState.gazeSmoothing
         activeBackend.headWeight = appState.headWeight
+        activeVoiceBackend.silenceThreshold = Float(appState.micSensitivity)
         let da = appState.debugSmoothing
         debugHeadFilter.alpha = da
         debugPupilFilter.alpha = da
@@ -204,6 +232,8 @@ final class AppCoordinator {
         debugCalPupilFilter.alpha = da
         debugRawFusedFilter.alpha = da
         debugCalFusedFilter.alpha = da
+        terminalManager.preferredTerminal = appState.preferredTerminal
+        terminalManager.launchCommand = appState.terminalLaunchCommand
         updateOverlayVisibility()
     }
 
@@ -269,6 +299,13 @@ final class AppCoordinator {
             appState.addError("Eye tracking failed: \(error.localizedDescription)")
         }
         updateStatus()
+
+        // Refresh camera preview if it was opened before tracking started,
+        // so it picks up the now-active capture session.
+        if appState.isCameraPreviewVisible {
+            dismissCameraPreview()
+            showCameraPreview()
+        }
     }
 
     func stopEyeTracking() {
@@ -283,21 +320,26 @@ final class AppCoordinator {
     // MARK: - Voice
 
     func startVoice() async {
-        voiceEngine.modelName = appState.whisperModel
+        activeVoiceBackend.modelName = appState.whisperModel
         commandParser.enableNormalization = appState.enableTextNormalization
         commandParser.executeKeyword = appState.executeKeyword
         do {
-            try await voiceEngine.start()
-            appState.isVoiceActive = true
-            showWaveformPanel()
+            try await activeVoiceBackend.start()
+            await MainActor.run {
+                appState.isVoiceActive = true
+                showWaveformPanel()
+                updateStatus()
+            }
         } catch {
-            appState.addError("Voice engine failed: \(error.localizedDescription)")
+            await MainActor.run {
+                appState.addError("Voice engine failed: \(error.localizedDescription)")
+                updateStatus()
+            }
         }
-        updateStatus()
     }
 
     func stopVoice() {
-        voiceEngine.stop()
+        activeVoiceBackend.stop()
         appState.isVoiceActive = false
         dismissWaveformPanel()
         updateStatus()
@@ -325,6 +367,10 @@ final class AppCoordinator {
 
         if cameraGranted {
             startEyeTracking()
+
+            if !calibrationManager.isCalibrated {
+                startCalibration()
+            }
         }
 
         if micGranted {
@@ -332,6 +378,47 @@ final class AppCoordinator {
         }
 
         updateStatus()
+    }
+
+    // MARK: - Manual Focus
+
+    func manualFocus(quadrant: ScreenQuadrant) {
+        appState.focusedQuadrant = quadrant
+        print("[AppCoordinator] Manual focus set to \(quadrant.displayName)")
+        guard terminalManager.isSetup else {
+            print("[AppCoordinator] Terminals not set up — focus set but can't activate window")
+            return
+        }
+        Task {
+            do {
+                try await terminalManager.focusTerminal(quadrant: quadrant)
+            } catch {
+                appState.addError("Focus failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    // MARK: - Test Send
+
+    func testSendText() {
+        guard let quadrant = appState.focusedQuadrant else {
+            appState.addError("No quadrant focused — select one first")
+            return
+        }
+        guard terminalManager.isSetup else {
+            appState.addError("Terminals not set up")
+            return
+        }
+        let testText = "echo hello from eyeTerm"
+        print("[AppCoordinator] Test send: \"\(testText)\" to \(quadrant.displayName)")
+        Task {
+            do {
+                try await terminalManager.typeText(testText, in: quadrant)
+                try await terminalManager.sendReturn(in: quadrant)
+            } catch {
+                appState.addError("Test send failed: \(error.localizedDescription)")
+            }
+        }
     }
 
     // MARK: - Backend Switching
@@ -354,6 +441,22 @@ final class AppCoordinator {
             dismissCameraPreview()
             showCameraPreview()
         }
+    }
+
+    // MARK: - Voice Backend Switching
+
+    func switchVoiceBackend(to backend: VoiceBackend) {
+        let wasRunning = activeVoiceBackend.isRunning
+        if wasRunning { stopVoice() }
+
+        appState.voiceBackend = backend
+        activeVoiceBackend = backend == .whisperCpp
+            ? WhisperCppBackend() as VoiceTranscriptionBackend
+            : WhisperKitBackend() as VoiceTranscriptionBackend
+        wireCallbacks()
+        pushAllSettings()
+
+        if wasRunning { Task { await startVoice() } }
     }
 
     // MARK: - Calibration
@@ -458,7 +561,7 @@ final class AppCoordinator {
             .environment(appState)
 
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 280, height: 60),
+            contentRect: NSRect(x: 0, y: 0, width: 133, height: 36),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -470,11 +573,10 @@ final class AppCoordinator {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.ignoresMouseEvents = true
 
-        // Position at bottom center of screen
         if let screen = NSScreen.main {
             let screenFrame = screen.visibleFrame
-            let x = screenFrame.midX - 140
-            let y = screenFrame.minY + 16
+            let x = screenFrame.midX - 66.5
+            let y = screenFrame.minY + 12
             panel.setFrameOrigin(NSPoint(x: x, y: y))
         }
 
@@ -585,7 +687,7 @@ final class AppCoordinator {
             backing: .buffered,
             defer: false
         )
-        panel.level = .normal
+        panel.level = .floating
         panel.hasShadow = true
         panel.title = "Welcome to eyeTerm"
         panel.isReleasedWhenClosed = false

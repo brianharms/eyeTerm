@@ -10,10 +10,11 @@ struct WalkthroughHowItWorksStep: View {
 
     var body: some View {
         VStack(spacing: 20) {
+            Spacer()
+
             Text("How It Works")
                 .font(.title)
                 .fontWeight(.bold)
-                .padding(.top, 8)
 
             VStack(alignment: .leading, spacing: 16) {
                 ForEach(concepts, id: \.title) { concept in

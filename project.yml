@@ -9,6 +9,9 @@ packages:
   WhisperKit:
     url: https://github.com/argmaxinc/WhisperKit.git
     from: "0.9.0"
+  SwiftWhisper:
+    url: https://github.com/exPHAT/SwiftWhisper.git
+    branch: master
 
 targets:
   GazeTerminal:
@@ -16,11 +19,26 @@ targets:
     platform: macOS
     sources:
       - Sources/GazeTerminal
-    resources:
-      - path: Resources/gaze_tracker.py
-        buildPhase: resources
-      - path: Resources/test_gaze.py
-        buildPhase: resources
+    postCompileScripts:
+      - script: |
+          cp "${PROJECT_DIR}/Resources/gaze_tracker.py" "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Resources/gaze_tracker.py"
+          cp "${PROJECT_DIR}/Resources/test_gaze.py" "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Resources/test_gaze.py"
+          # Copy bundled whisper.cpp ggml models
+          mkdir -p "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Resources/Models/ggml"
+          cp -n "${PROJECT_DIR}/Resources/Models/ggml/"*.bin "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Resources/Models/ggml/" 2>/dev/null || true
+          # Copy bundled WhisperKit CoreML models
+          if [ -d "${PROJECT_DIR}/Resources/Models/whisperkit" ]; then
+            mkdir -p "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Resources/Models/whisperkit"
+            cp -Rn "${PROJECT_DIR}/Resources/Models/whisperkit/" "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Resources/Models/whisperkit/" 2>/dev/null || true
+          fi
+        name: Copy Resources
+    preBuildScripts:
+      - script: |
+          # Strip extended attributes from source resources to prevent codesign failures
+          xattr -cr "${PROJECT_DIR}/Resources" 2>/dev/null || true
+          find "${PROJECT_DIR}/Resources" -name "._*" -delete 2>/dev/null || true
+          find "${PROJECT_DIR}/Resources" -name ".DS_Store" -delete 2>/dev/null || true
+        name: Clean Resource Attributes
     settings:
       base:
         CODE_SIGN_ENTITLEMENTS: GazeTerminal.entitlements
@@ -36,3 +54,5 @@ targets:
     dependencies:
       - package: WhisperKit
         product: WhisperKit
+      - package: SwiftWhisper
+        product: SwiftWhisper

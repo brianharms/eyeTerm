@@ -8,33 +8,32 @@ struct AudioWaveformView: View {
         let speaking = appState.isSpeaking
 
         HStack(spacing: 0) {
-            // Mic icon
             Image(systemName: speaking ? "mic.fill" : "mic")
-                .font(.system(size: 14))
-                .foregroundStyle(speaking ? .green : .white.opacity(0.6))
-                .frame(width: 24)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(speaking ? .green : .white.opacity(0.5))
+                .frame(width: 18)
 
-            // Waveform bars
-            HStack(alignment: .center, spacing: 1.5) {
-                ForEach(Array(history.enumerated()), id: \.offset) { index, level in
+            HStack(alignment: .center, spacing: 1) {
+                ForEach(Array(history.enumerated()), id: \.offset) { _, level in
                     let normalized = min(Double(level) / 0.05, 1.0)
-                    let barHeight = max(2, normalized * 36)
-                    RoundedRectangle(cornerRadius: 1)
+                    let barHeight = max(1.5, normalized * 18)
+                    RoundedRectangle(cornerRadius: 0.75)
                         .fill(barColor(level: level, speaking: speaking))
-                        .frame(width: 3, height: barHeight)
+                        .frame(width: 4, height: barHeight)
                 }
             }
-            .frame(height: 40)
-            .animation(.easeOut(duration: 0.06), value: history)
+            .scaleEffect(x: 0.9, y: 1.0, anchor: .center)
+            .frame(height: 20)
+            .animation(.easeOut(duration: 0.03), value: history)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
         .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.black.opacity(0.75))
+            Capsule()
+                .fill(.black.opacity(0.8))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .strokeBorder(.white.opacity(0.1), lineWidth: 1)
+                    Capsule()
+                        .strokeBorder(.white.opacity(0.08), lineWidth: 0.5)
                 )
         )
     }
@@ -43,9 +42,9 @@ struct AudioWaveformView: View {
         if level > 0.04 {
             return .green
         } else if level > 0.01 {
-            return speaking ? .green.opacity(0.7) : .white.opacity(0.5)
+            return speaking ? .green.opacity(0.7) : .white.opacity(0.4)
         } else {
-            return .white.opacity(0.2)
+            return .white.opacity(0.12)
         }
     }
 }

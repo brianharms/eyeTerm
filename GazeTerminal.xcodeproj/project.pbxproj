@@ -7,45 +7,48 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0B5461F604DE648E9EF37C3F /* WhisperKitBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9D5A05FECEFE78B48D61D20 /* WhisperKitBackend.swift */; };
 		0B77A75ECD521CEF407EAE27 /* WalkthroughStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55A35A4F06AA601CA33A3B2F /* WalkthroughStep.swift */; };
 		0D13C3C30C0E41E77ADEE4F1 /* CalibrationOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 649EB8AB3622AC30BD47E18C /* CalibrationOverlayView.swift */; };
 		14FEBCBF7B93E8908CD45E03 /* StatusIndicatorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19F20A1853EEA72B7AE7E1DE /* StatusIndicatorView.swift */; };
 		1CC8CBC6676420D7393A1C26 /* AppleScriptBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF02BB99385176470EFB325B /* AppleScriptBridge.swift */; };
 		204B7FE32E94802CE2725BC6 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D434A6091E4C37B1F9E67F8 /* MenuBarView.swift */; };
 		233134220A33A4B25D31931A /* WalkthroughView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEC63353E191BAC5FA8A487F /* WalkthroughView.swift */; };
+		261BA9769FC49BFE37CAFD9C /* AudioWaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82972FA1BAF41296519BE225 /* AudioWaveformView.swift */; };
 		282838307D01683D8BD8F1CB /* TerminalManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D971132F816F74786BC691C8 /* TerminalManager.swift */; };
 		2A9DDA0C82A72C05A8069812 /* WalkthroughReadyStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7498BAE98D6BB7AD51A4A4CB /* WalkthroughReadyStep.swift */; };
 		2BC05927904FF8EA92357D2E /* OverlayMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6273C1EA2AD00F010998F209 /* OverlayMode.swift */; };
 		37E49EB6E6356B9CBBEF7400 /* MediaPipeBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF0B3E2F8EFD6A97D33EC806 /* MediaPipeBackend.swift */; };
 		3B5F3087E5C2E30FB5AE02F8 /* CommandParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3D7656B401C9365BCCE0E2A /* CommandParser.swift */; };
+		3E6509E43FCCAB1A205573A0 /* SwiftWhisper in Frameworks */ = {isa = PBXBuildFile; productRef = D59CA01DC0385995F68B0F2B /* SwiftWhisper */; };
 		41121298F16F81C386763CED /* WalkthroughHowItWorksStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FD07D70CA91DA50BAEEDD30 /* WalkthroughHowItWorksStep.swift */; };
 		449556D9596ECC40337CDDE8 /* GazeEstimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DD550AB1F16D0040719D2DA /* GazeEstimator.swift */; };
 		4A0629B5A627B6355B032689 /* OnboardingState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39C45F5F7940FFC7F7A40EAE /* OnboardingState.swift */; };
 		4A8E062AA8FAA36DBF3ED97F /* GazeOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D7A1B2610FF4B356FDC0255 /* GazeOverlayView.swift */; };
-		AABB0010AUDIOWAVEFORM001 /* AudioWaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB0011AUDIOWAVEFORM002 /* AudioWaveformView.swift */; };
 		4E23608CA088A3875BD71946 /* ErrorDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F92F69AB830868DA666C8D7B /* ErrorDetailView.swift */; };
 		4E58B88FFC6267D788159434 /* CalibrationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAF8449A3159B48CA9DA6879 /* CalibrationManager.swift */; };
-		579D7B6531FFEC76C011CD9E /* VoiceEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AF8817280F8C632A472DB92 /* VoiceEngine.swift */; };
 		597101944A1D476362C8CC4B /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = EA97E617679FB48A550F04E8 /* WhisperKit */; };
 		5F8E1BB3E87673B5CAB2F94D /* CameraPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E89C6715F2C5F4FB2198BD8 /* CameraPreviewView.swift */; };
 		608807849A13323FD19BC4DC /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF0F80FCA8BC6955CFE2F495 /* AppState.swift */; };
 		6AE889A7E9367BA6DB2F11C9 /* WindowLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 145CCF8051C7B30A286DD98B /* WindowLayout.swift */; };
 		76E33FFF0D7D67FF2EB07D92 /* WalkthroughPermissionStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A67D3E1D7454EDF7CF4908A /* WalkthroughPermissionStep.swift */; };
+		7A3AF44050F5D22C2CEB74C5 /* WhisperCppModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56124B9ACEB8099207E33897 /* WhisperCppModelManager.swift */; };
 		7E3B3CB6E3014A0707B1BED8 /* WalkthroughWelcomeStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85337BE1BBE399ECC52CB5B /* WalkthroughWelcomeStep.swift */; };
 		92EB5D6BBD83AD2EE00A0354 /* AudioBufferManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29B4CD9E94CB07422240DA2B /* AudioBufferManager.swift */; };
 		9882A587D3B8459E74B62827 /* GazeTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3886D549B376D4DF693023EC /* GazeTracker.swift */; };
 		9DB1D34E6E2B534014FA4900 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A48E2A2BB19D070810096C7 /* SettingsView.swift */; };
 		A72043C52EE1E16CD78486CF /* EyeTrackingBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 649FC715F5142AA65BFF5AD6 /* EyeTrackingBackend.swift */; };
 		A7E8B91BEC23BFD8E744B622 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DD02AD9E68EA4BBB73D3349A /* Assets.xcassets */; };
-		AABB0001GAZETRACKER00001 /* gaze_tracker.py in Resources */ = {isa = PBXBuildFile; fileRef = AABB0002GAZETRACKER00002 /* gaze_tracker.py */; };
-		AABB0003TESTGAZE0000003 /* test_gaze.py in Resources */ = {isa = PBXBuildFile; fileRef = AABB0004TESTGAZE0000004 /* test_gaze.py */; };
 		CA4DF2A5D511055B13DCFE47 /* DwellTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C16762EBF38DA8D934CECE3 /* DwellTimer.swift */; };
+		CADBB6E302BEF3A54567B02D /* VoiceAudioPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = AECB3F405ED8DCFE994B6FCF /* VoiceAudioPipeline.swift */; };
 		D2489536990E6F0C8A4384B1 /* Permissions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A48335853EC8FA8EE298833 /* Permissions.swift */; };
 		D6BA323314C9549AF7EDCD28 /* ScreenQuadrant.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7746B4C93E0563B2A2BC4D55 /* ScreenQuadrant.swift */; };
 		D9C0530B0936ACC11763335B /* WalkthroughCompleteStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = F19816AFF6712DF1D8178B67 /* WalkthroughCompleteStep.swift */; };
+		DB34289F07BD518F67B645AF /* WhisperCppBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FAC2720251E23376D14CB75 /* WhisperCppBackend.swift */; };
 		DCF0CA50397E64706ADE6D44 /* GazeEMAFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DF5E660D1EC381618E4F22B /* GazeEMAFilter.swift */; };
 		E3424CD2866BE1055E56563B /* AppCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08806DB2ECC3D18F4E418C15 /* AppCoordinator.swift */; };
 		EAD4B27D40154FB5DBDBF3B2 /* GazeTerminalApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FD771BB7B49C62AFC1E96EE /* GazeTerminalApp.swift */; };
+		F6CCA3025381AB9B3584E445 /* VoiceTranscriptionBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91FE91A820BCEDC777D625B9 /* VoiceTranscriptionBackend.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -58,25 +61,30 @@
 		3886D549B376D4DF693023EC /* GazeTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GazeTracker.swift; sourceTree = "<group>"; };
 		39C45F5F7940FFC7F7A40EAE /* OnboardingState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingState.swift; sourceTree = "<group>"; };
 		55A35A4F06AA601CA33A3B2F /* WalkthroughStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkthroughStep.swift; sourceTree = "<group>"; };
+		56124B9ACEB8099207E33897 /* WhisperCppModelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhisperCppModelManager.swift; sourceTree = "<group>"; };
 		5A48E2A2BB19D070810096C7 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		5D434A6091E4C37B1F9E67F8 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
+		5FAC2720251E23376D14CB75 /* WhisperCppBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhisperCppBackend.swift; sourceTree = "<group>"; };
 		6273C1EA2AD00F010998F209 /* OverlayMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayMode.swift; sourceTree = "<group>"; };
 		649EB8AB3622AC30BD47E18C /* CalibrationOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalibrationOverlayView.swift; sourceTree = "<group>"; };
 		649FC715F5142AA65BFF5AD6 /* EyeTrackingBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EyeTrackingBackend.swift; sourceTree = "<group>"; };
-		6AF8817280F8C632A472DB92 /* VoiceEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceEngine.swift; sourceTree = "<group>"; };
 		6DD550AB1F16D0040719D2DA /* GazeEstimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GazeEstimator.swift; sourceTree = "<group>"; };
 		7498BAE98D6BB7AD51A4A4CB /* WalkthroughReadyStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkthroughReadyStep.swift; sourceTree = "<group>"; };
 		7746B4C93E0563B2A2BC4D55 /* ScreenQuadrant.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenQuadrant.swift; sourceTree = "<group>"; };
 		7D7A1B2610FF4B356FDC0255 /* GazeOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GazeOverlayView.swift; sourceTree = "<group>"; };
+		82972FA1BAF41296519BE225 /* AudioWaveformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioWaveformView.swift; sourceTree = "<group>"; };
 		8A48335853EC8FA8EE298833 /* Permissions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Permissions.swift; sourceTree = "<group>"; };
 		8A67D3E1D7454EDF7CF4908A /* WalkthroughPermissionStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkthroughPermissionStep.swift; sourceTree = "<group>"; };
 		8E89C6715F2C5F4FB2198BD8 /* CameraPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPreviewView.swift; sourceTree = "<group>"; };
+		91FE91A820BCEDC777D625B9 /* VoiceTranscriptionBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceTranscriptionBackend.swift; sourceTree = "<group>"; };
 		9D83A44DBAC60BB46F559C09 /* GazeTerminal.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GazeTerminal.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9FD07D70CA91DA50BAEEDD30 /* WalkthroughHowItWorksStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkthroughHowItWorksStep.swift; sourceTree = "<group>"; };
 		9FD771BB7B49C62AFC1E96EE /* GazeTerminalApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GazeTerminalApp.swift; sourceTree = "<group>"; };
 		A3D7656B401C9365BCCE0E2A /* CommandParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandParser.swift; sourceTree = "<group>"; };
 		AAF8449A3159B48CA9DA6879 /* CalibrationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalibrationManager.swift; sourceTree = "<group>"; };
+		AECB3F405ED8DCFE994B6FCF /* VoiceAudioPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceAudioPipeline.swift; sourceTree = "<group>"; };
 		AF0B3E2F8EFD6A97D33EC806 /* MediaPipeBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaPipeBackend.swift; sourceTree = "<group>"; };
+		B9D5A05FECEFE78B48D61D20 /* WhisperKitBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhisperKitBackend.swift; sourceTree = "<group>"; };
 		BEC63353E191BAC5FA8A487F /* WalkthroughView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkthroughView.swift; sourceTree = "<group>"; };
 		C85337BE1BBE399ECC52CB5B /* WalkthroughWelcomeStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkthroughWelcomeStep.swift; sourceTree = "<group>"; };
 		D971132F816F74786BC691C8 /* TerminalManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalManager.swift; sourceTree = "<group>"; };
@@ -85,9 +93,6 @@
 		EF0F80FCA8BC6955CFE2F495 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		F19816AFF6712DF1D8178B67 /* WalkthroughCompleteStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkthroughCompleteStep.swift; sourceTree = "<group>"; };
 		F92F69AB830868DA666C8D7B /* ErrorDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorDetailView.swift; sourceTree = "<group>"; };
-		AABB0002GAZETRACKER00002 /* gaze_tracker.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; name = gaze_tracker.py; path = Resources/gaze_tracker.py; sourceTree = SOURCE_ROOT; };
-		AABB0004TESTGAZE0000004 /* test_gaze.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; name = test_gaze.py; path = Resources/test_gaze.py; sourceTree = SOURCE_ROOT; };
-		AABB0011AUDIOWAVEFORM002 /* AudioWaveformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioWaveformView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -96,6 +101,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				597101944A1D476362C8CC4B /* WhisperKit in Frameworks */,
+				3E6509E43FCCAB1A205573A0 /* SwiftWhisper in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -119,7 +125,7 @@
 		4C939BEF13856A4B74CC900C /* UI */ = {
 			isa = PBXGroup;
 			children = (
-				AABB0011AUDIOWAVEFORM002 /* AudioWaveformView.swift */,
+				82972FA1BAF41296519BE225 /* AudioWaveformView.swift */,
 				649EB8AB3622AC30BD47E18C /* CalibrationOverlayView.swift */,
 				8E89C6715F2C5F4FB2198BD8 /* CameraPreviewView.swift */,
 				F92F69AB830868DA666C8D7B /* ErrorDetailView.swift */,
@@ -167,8 +173,6 @@
 			isa = PBXGroup;
 			children = (
 				DD02AD9E68EA4BBB73D3349A /* Assets.xcassets */,
-				AABB0002GAZETRACKER00002 /* gaze_tracker.py */,
-				AABB0004TESTGAZE0000004 /* test_gaze.py */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -209,7 +213,11 @@
 			children = (
 				29B4CD9E94CB07422240DA2B /* AudioBufferManager.swift */,
 				A3D7656B401C9365BCCE0E2A /* CommandParser.swift */,
-				6AF8817280F8C632A472DB92 /* VoiceEngine.swift */,
+				AECB3F405ED8DCFE994B6FCF /* VoiceAudioPipeline.swift */,
+				91FE91A820BCEDC777D625B9 /* VoiceTranscriptionBackend.swift */,
+				5FAC2720251E23376D14CB75 /* WhisperCppBackend.swift */,
+				56124B9ACEB8099207E33897 /* WhisperCppModelManager.swift */,
+				B9D5A05FECEFE78B48D61D20 /* WhisperKitBackend.swift */,
 			);
 			path = Voice;
 			sourceTree = "<group>";
@@ -242,7 +250,9 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 776CB8F7021F998B789082EF /* Build configuration list for PBXNativeTarget "GazeTerminal" */;
 			buildPhases = (
+				D75678B3F8D6DC7B12A3AE18 /* Clean Resource Attributes */,
 				3CB4E7333B308E8C10218408 /* Sources */,
+				3975AB43D9D45B70C18CF32D /* Copy Resources */,
 				7BD5A92E2EEBB9A0A628E7C4 /* Resources */,
 				7DD6503B71BBA43C81A6AFFB /* Frameworks */,
 			);
@@ -253,6 +263,7 @@
 			name = GazeTerminal;
 			packageProductDependencies = (
 				EA97E617679FB48A550F04E8 /* WhisperKit */,
+				D59CA01DC0385995F68B0F2B /* SwiftWhisper */,
 			);
 			productName = GazeTerminal;
 			productReference = 9D83A44DBAC60BB46F559C09 /* GazeTerminal.app */;
@@ -278,6 +289,7 @@
 			mainGroup = 759960DD518EFDCCA2C6AB01;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				FD88C82BBF3556A7E8C1337B /* XCRemoteSwiftPackageReference "SwiftWhisper" */,
 				2EB8D1A971F338672AF3FB4C /* XCRemoteSwiftPackageReference "WhisperKit" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -295,12 +307,49 @@
 			buildActionMask = 2147483647;
 			files = (
 				A7E8B91BEC23BFD8E744B622 /* Assets.xcassets in Resources */,
-				AABB0001GAZETRACKER00001 /* gaze_tracker.py in Resources */,
-				AABB0003TESTGAZE0000003 /* test_gaze.py in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		3975AB43D9D45B70C18CF32D /* Copy Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Copy Resources";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "cp \"${PROJECT_DIR}/Resources/gaze_tracker.py\" \"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Resources/gaze_tracker.py\"\ncp \"${PROJECT_DIR}/Resources/test_gaze.py\" \"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Resources/test_gaze.py\"\n# Copy bundled whisper.cpp ggml models\nmkdir -p \"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Resources/Models/ggml\"\ncp -n \"${PROJECT_DIR}/Resources/Models/ggml/\"*.bin \"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Resources/Models/ggml/\" 2>/dev/null || true\n# Copy bundled WhisperKit CoreML models\nif [ -d \"${PROJECT_DIR}/Resources/Models/whisperkit\" ]; then\n  mkdir -p \"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Resources/Models/whisperkit\"\n  cp -Rn \"${PROJECT_DIR}/Resources/Models/whisperkit/\" \"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Resources/Models/whisperkit/\" 2>/dev/null || true\nfi\n";
+		};
+		D75678B3F8D6DC7B12A3AE18 /* Clean Resource Attributes */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Clean Resource Attributes";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Strip extended attributes from source resources to prevent codesign failures\nxattr -cr \"${PROJECT_DIR}/Resources\" 2>/dev/null || true\nfind \"${PROJECT_DIR}/Resources\" -name \"._*\" -delete 2>/dev/null || true\nfind \"${PROJECT_DIR}/Resources\" -name \".DS_Store\" -delete 2>/dev/null || true\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		3CB4E7333B308E8C10218408 /* Sources */ = {
@@ -311,7 +360,7 @@
 				608807849A13323FD19BC4DC /* AppState.swift in Sources */,
 				1CC8CBC6676420D7393A1C26 /* AppleScriptBridge.swift in Sources */,
 				92EB5D6BBD83AD2EE00A0354 /* AudioBufferManager.swift in Sources */,
-				AABB0010AUDIOWAVEFORM001 /* AudioWaveformView.swift in Sources */,
+				261BA9769FC49BFE37CAFD9C /* AudioWaveformView.swift in Sources */,
 				4E58B88FFC6267D788159434 /* CalibrationManager.swift in Sources */,
 				0D13C3C30C0E41E77ADEE4F1 /* CalibrationOverlayView.swift in Sources */,
 				5F8E1BB3E87673B5CAB2F94D /* CameraPreviewView.swift in Sources */,
@@ -333,7 +382,8 @@
 				9DB1D34E6E2B534014FA4900 /* SettingsView.swift in Sources */,
 				14FEBCBF7B93E8908CD45E03 /* StatusIndicatorView.swift in Sources */,
 				282838307D01683D8BD8F1CB /* TerminalManager.swift in Sources */,
-				579D7B6531FFEC76C011CD9E /* VoiceEngine.swift in Sources */,
+				CADBB6E302BEF3A54567B02D /* VoiceAudioPipeline.swift in Sources */,
+				F6CCA3025381AB9B3584E445 /* VoiceTranscriptionBackend.swift in Sources */,
 				D9C0530B0936ACC11763335B /* WalkthroughCompleteStep.swift in Sources */,
 				41121298F16F81C386763CED /* WalkthroughHowItWorksStep.swift in Sources */,
 				76E33FFF0D7D67FF2EB07D92 /* WalkthroughPermissionStep.swift in Sources */,
@@ -341,6 +391,9 @@
 				0B77A75ECD521CEF407EAE27 /* WalkthroughStep.swift in Sources */,
 				233134220A33A4B25D31931A /* WalkthroughView.swift in Sources */,
 				7E3B3CB6E3014A0707B1BED8 /* WalkthroughWelcomeStep.swift in Sources */,
+				DB34289F07BD518F67B645AF /* WhisperCppBackend.swift in Sources */,
+				7A3AF44050F5D22C2CEB74C5 /* WhisperCppModelManager.swift in Sources */,
+				0B5461F604DE648E9EF37C3F /* WhisperKitBackend.swift in Sources */,
 				6AE889A7E9367BA6DB2F11C9 /* WindowLayout.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -543,9 +596,22 @@
 				minimumVersion = 0.9.0;
 			};
 		};
+		FD88C82BBF3556A7E8C1337B /* XCRemoteSwiftPackageReference "SwiftWhisper" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/exPHAT/SwiftWhisper.git";
+			requirement = {
+				branch = master;
+				kind = branch;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		D59CA01DC0385995F68B0F2B /* SwiftWhisper */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FD88C82BBF3556A7E8C1337B /* XCRemoteSwiftPackageReference "SwiftWhisper" */;
+			productName = SwiftWhisper;
+		};
 		EA97E617679FB48A550F04E8 /* WhisperKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 2EB8D1A971F338672AF3FB4C /* XCRemoteSwiftPackageReference "WhisperKit" */;

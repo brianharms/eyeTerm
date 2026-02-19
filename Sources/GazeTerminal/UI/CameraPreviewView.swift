@@ -57,13 +57,13 @@ struct CameraPreviewView: View {
                         .stroke(.green, lineWidth: 1.5)
 
                     EyeRegionShape(points: face.leftEyePoints, videoRect: videoRect)
-                        .stroke(.cyan, lineWidth: 1)
+                        .stroke(.red, lineWidth: 1)
                     EyeRegionShape(points: face.rightEyePoints, videoRect: videoRect)
-                        .stroke(.cyan, lineWidth: 1)
+                        .stroke(.red, lineWidth: 1)
 
                     if let lp = face.leftPupilCenter {
                         Circle()
-                            .fill(.red)
+                            .fill(.blue)
                             .frame(width: 6, height: 6)
                             .position(
                                 x: videoRect.origin.x + (1 - lp.x) * videoRect.width,
@@ -72,7 +72,7 @@ struct CameraPreviewView: View {
                     }
                     if let rp = face.rightPupilCenter {
                         Circle()
-                            .fill(.red)
+                            .fill(.blue)
                             .frame(width: 6, height: 6)
                             .position(
                                 x: videoRect.origin.x + (1 - rp.x) * videoRect.width,
