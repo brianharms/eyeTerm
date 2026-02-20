@@ -66,7 +66,7 @@ struct SettingsView: View {
                         Text("Smooth")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
-                        Slider(value: $state.gazeSmoothing, in: 0.05...1.0, step: 0.05)
+                        Slider(value: $state.eyeSmoothing, in: 0.05...1.0, step: 0.05)
                         Text("Responsive")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
@@ -80,6 +80,30 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                         Slider(value: $state.headWeight, in: 0.0...1.0, step: 0.05)
                         Text("Head")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                LabeledContent("Vertical Sensitivity") {
+                    HStack {
+                        Text("Narrow")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Slider(value: $state.headPitchSensitivity, in: 0.1...2.0, step: 0.05)
+                        Text("Wide")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                LabeledContent("Head Amplification") {
+                    HStack {
+                        Text("None")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Slider(value: $state.headAmplification, in: 1.0...10.0, step: 0.5)
+                        Text("Strong")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
@@ -158,24 +182,24 @@ struct SettingsView: View {
                     }
                 }
 
-                LabeledContent("Subtle Gaze Size") {
+                LabeledContent("Subtle Eye Size") {
                     HStack {
                         Text("Small")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
-                        Slider(value: $state.subtleGazeSize, in: 5.0...100.0, step: 1.0)
+                        Slider(value: $state.subtleEyeSize, in: 5.0...100.0, step: 1.0)
                         Text("Large")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
                 }
 
-                LabeledContent("Subtle Gaze Opacity") {
+                LabeledContent("Subtle Eye Opacity") {
                     HStack {
                         Text("Faint")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
-                        Slider(value: $state.subtleGazeOpacity, in: 0.05...1.0, step: 0.05)
+                        Slider(value: $state.subtleEyeOpacity, in: 0.05...1.0, step: 0.05)
                         Text("Solid")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
@@ -212,7 +236,7 @@ struct SettingsView: View {
                                 .labelsHidden()
                                 .toggleStyle(.checkbox)
                             legendGroup(label: "Smoothed", color: .blue, items: [
-                                (.circle(8), "Gaze Position"),
+                                (.circle(8), "Eye Position"),
                             ])
                         }
                     }
@@ -292,7 +316,45 @@ struct SettingsView: View {
             }
 
             Section("Transcription Log") {
-                if state.transcriptionHistory.isEmpty {
+                HStack {
+                    Text(state.voiceBackend.rawValue)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    switch state.voiceModelState {
+                    case .idle:
+                        Text("Idle")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    case .loading:
+                        HStack(spacing: 4) {
+                            ProgressView()
+                                .controlSize(.mini)
+                            Text("Loading model...")
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                        }
+                    case .ready:
+                        Text("Ready")
+                            .font(.caption2)
+                            .foregroundStyle(.green)
+                    case .failed(let msg):
+                        Text("Failed: \(msg)")
+                            .font(.caption2)
+                            .foregroundStyle(.red)
+                            .lineLimit(1)
+                    }
+                }
+
+                if !state.partialTranscription.isEmpty {
+                    Text(state.partialTranscription)
+                        .font(.caption)
+                        .foregroundStyle(.blue)
+                        .italic()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                if state.transcriptionHistory.isEmpty && state.partialTranscription.isEmpty {
                     Text("Listening...")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -300,11 +362,31 @@ struct SettingsView: View {
                         .frame(height: 100)
                 } else {
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: 6) {
                             ForEach(state.transcriptionHistory.indices.reversed(), id: \.self) { index in
-                                Text(state.transcriptionHistory[index].text)
-                                    .font(.caption)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                let entry = state.transcriptionHistory[index]
+                                VStack(alignment: .leading, spacing: 1) {
+                                    HStack(spacing: 4) {
+                                        Text("Raw")
+                                            .font(.system(size: 8, weight: .semibold))
+                                            .foregroundStyle(.secondary)
+                                            .frame(width: 30, alignment: .leading)
+                                        Text(entry.text)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    HStack(spacing: 4) {
+                                        Text("Send")
+                                            .font(.system(size: 8, weight: .semibold))
+                                            .foregroundStyle(entry.cleaned.isEmpty ? .red.opacity(0.6) : .green)
+                                            .frame(width: 30, alignment: .leading)
+                                        Text(entry.cleaned.isEmpty ? "(filtered out)" : entry.cleaned)
+                                            .font(.caption)
+                                            .fontWeight(.medium)
+                                            .foregroundStyle(entry.cleaned.isEmpty ? .red.opacity(0.6) : .primary)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
                             }
                         }
                         .padding(.vertical, 4)

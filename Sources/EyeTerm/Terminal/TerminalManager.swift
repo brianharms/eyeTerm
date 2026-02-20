@@ -111,7 +111,7 @@ final class TerminalManager {
             focusScript = """
                 tell application "\(app)"
                     activate
-                    select window \(index)
+                    set index of window \(index) to 1
                 end tell
             """
         case .terminal:
@@ -146,6 +146,38 @@ final class TerminalManager {
             script = """
                 tell application "\(app)"
                     do script "\(escaped)" in window \(index)
+                end tell
+            """
+        }
+        try await AppleScriptBridge.runAsync(script)
+    }
+
+    /// Send N backspace keystrokes to the terminal session for the given quadrant.
+    func sendBackspaces(_ count: Int, in quadrant: ScreenQuadrant) async throws {
+        guard count > 0 else { return }
+        let index = try await findWindowIndex(for: quadrant)
+        let app = preferredTerminal.appName
+        let script: String
+        switch preferredTerminal {
+        case .iTerm2:
+            // Use AppleScript to build a string of DEL (character id 127) and write it in one call
+            script = """
+                tell application "\(app)"
+                    set delStr to ""
+                    repeat \(count) times
+                        set delStr to delStr & (character id 127)
+                    end repeat
+                    tell current session of window \(index)
+                        write text delStr without newline
+                    end tell
+                end tell
+            """
+        case .terminal:
+            script = """
+                tell application "System Events"
+                    repeat \(count) times
+                        key code 51
+                    end repeat
                 end tell
             """
         }
@@ -207,19 +239,19 @@ final class TerminalManager {
 
         let findScript = """
             tell application "\(app)"
-                set windowList to {}
+                set windowInfo to ""
                 repeat with w in windows
                     set b to bounds of w
-                    set end of windowList to (item 1 of b as text) & "," & (item 2 of b as text) & "," & (item 3 of b as text) & "," & (item 4 of b as text)
+                    set windowInfo to windowInfo & (item 1 of b as text) & "," & (item 2 of b as text) & "," & (item 3 of b as text) & "," & (item 4 of b as text) & "|"
                 end repeat
-                return windowList
+                return windowInfo
             end tell
         """
-        guard let result = try await AppleScriptBridge.runAsync(findScript) else {
+        guard let result = try await AppleScriptBridge.runAsync(findScript), !result.isEmpty else {
             throw TerminalError.windowNotFound(quadrant)
         }
 
-        let entries = result.components(separatedBy: ", ")
+        let entries = result.components(separatedBy: "|").filter { !$0.isEmpty }
         var bestIndex = 0
         var bestDistance = Int.max
         for (i, entry) in entries.enumerated() {

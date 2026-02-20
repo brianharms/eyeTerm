@@ -10,6 +10,7 @@ enum VoiceBackend: String, CaseIterable, Identifiable {
 protocol VoiceTranscriptionBackend: AnyObject {
     var isRunning: Bool { get }
     var onTranscription: ((String) -> Void)? { get set }
+    var onPartialTranscription: ((String) -> Void)? { get set }
     var onAudioLevel: ((Float, Bool) -> Void)? { get set }
     var onModelState: ((VoiceModelState) -> Void)? { get set }
     var modelName: String { get set }

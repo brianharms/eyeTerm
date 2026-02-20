@@ -4,10 +4,10 @@ import Foundation
 
 final class MediaPipeBackend: EyeTrackingBackend {
 
-    var onGazeUpdate: ((ScreenQuadrant?, Double) -> Void)?
-    var onRawGazePoint: ((CGPoint) -> Void)?
-    var onCalibratedGazePoint: ((CGPoint) -> Void)?
-    var onSmoothedGazePoint: ((CGPoint) -> Void)?
+    var onEyeUpdate: ((ScreenQuadrant?, Double) -> Void)?
+    var onRawEyePoint: ((CGPoint) -> Void)?
+    var onCalibratedEyePoint: ((CGPoint) -> Void)?
+    var onSmoothedEyePoint: ((CGPoint) -> Void)?
     var onDiagnostics: ((EyeTermDiagnostics) -> Void)?
     var onFaceObservation: ((FaceObservationData?) -> Void)?
     var onError: ((String) -> Void)?
@@ -18,6 +18,10 @@ final class MediaPipeBackend: EyeTrackingBackend {
     }
 
     var headWeight: Double = 0.85
+    var headPitchSensitivity: Double = 0.6
+    var parallaxCorrX: Double = 0.0
+    var parallaxCorrY: Double = 0.0
+    var headAmplification: Double = 3.0
 
     var headCalibrationTransform: CGAffineTransform?
     var pupilCalibrationTransform: CGAffineTransform?
@@ -38,7 +42,7 @@ final class MediaPipeBackend: EyeTrackingBackend {
     func start() throws {
         guard !isRunning else { return }
 
-        guard let scriptPath = Bundle.main.path(forResource: "gaze_tracker", ofType: "py") else {
+        guard let scriptPath = Bundle.main.path(forResource: "eye_tracker", ofType: "py") else {
             throw MediaPipeError.scriptNotFound
         }
 
@@ -206,7 +210,7 @@ final class MediaPipeBackend: EyeTrackingBackend {
         // No face detected.
         guard json["face_detected"] as? Bool == true else {
             DispatchQueue.main.async { [weak self] in
-                self?.onGazeUpdate?(nil, 0)
+                self?.onEyeUpdate?(nil, 0)
                 self?.onFaceObservation?(nil)
             }
             return
@@ -220,23 +224,31 @@ final class MediaPipeBackend: EyeTrackingBackend {
 
         // Compute fusion on Swift side so the head/eye slider works.
         let headX = 0.5 - (headYaw / 1.0)
-        let headY = 0.5 - (headPitch / 0.6)
+        let headY = 0.5 - (headPitch / headPitchSensitivity)
         let pupilX = 1.0 - irisRatioX
         let pupilY = 1.0 - irisRatioY
 
+        // Parallax compensation: remove head-rotation artifacts from pupil.
+        let compPupilX = pupilX + parallaxCorrX * headYaw
+        let compPupilY = pupilY + parallaxCorrY * headPitch
+
+        // Head amplification: stretch small head movements.
+        let ampHeadX = 0.5 + (headX - 0.5) * headAmplification
+        let ampHeadY = 0.5 + (headY - 0.5) * headAmplification
+
         // Apply per-signal calibration.
-        var calHeadX = headX
-        var calHeadY = headY
+        var calHeadX = ampHeadX
+        var calHeadY = ampHeadY
         if let t = headCalibrationTransform {
-            let p = CGPoint(x: headX, y: headY).applying(t)
+            let p = CGPoint(x: ampHeadX, y: ampHeadY).applying(t)
             calHeadX = max(0, min(1, Double(p.x)))
             calHeadY = max(0, min(1, Double(p.y)))
         }
 
-        var calPupilX = pupilX
-        var calPupilY = pupilY
+        var calPupilX = compPupilX
+        var calPupilY = compPupilY
         if let t = pupilCalibrationTransform {
-            let p = CGPoint(x: pupilX, y: pupilY).applying(t)
+            let p = CGPoint(x: compPupilX, y: compPupilY).applying(t)
             calPupilX = max(0, min(1, Double(p.x)))
             calPupilY = max(0, min(1, Double(p.y)))
         }
@@ -244,7 +256,7 @@ final class MediaPipeBackend: EyeTrackingBackend {
         let eyeWeight = 1.0 - headWeight
         let fusedX = max(0, min(1, headWeight * headX + eyeWeight * pupilX))
         let fusedY = max(0, min(1, headWeight * headY + eyeWeight * pupilY))
-        let rawGaze = CGPoint(x: fusedX, y: fusedY)
+        let rawEye = CGPoint(x: fusedX, y: fusedY)
 
         let calX = max(0, min(1, headWeight * calHeadX + eyeWeight * calPupilX))
         let calY = max(0, min(1, headWeight * calHeadY + eyeWeight * calPupilY))
@@ -263,17 +275,17 @@ final class MediaPipeBackend: EyeTrackingBackend {
             headPitch: headPitch,
             pupilOffsetX: irisRatioX,
             pupilOffsetY: irisRatioY,
-            headGazePoint: CGPoint(x: max(0, min(1, headX)), y: max(0, min(1, headY))),
-            pupilGazePoint: CGPoint(x: max(0, min(1, pupilX)), y: max(0, min(1, pupilY))),
-            calibratedHeadGazePoint: CGPoint(x: calHeadX, y: calHeadY),
-            calibratedPupilGazePoint: CGPoint(x: calPupilX, y: calPupilY)
+            headPoint: CGPoint(x: max(0, min(1, headX)), y: max(0, min(1, headY))),
+            pupilPoint: CGPoint(x: max(0, min(1, pupilX)), y: max(0, min(1, pupilY))),
+            calibratedHeadPoint: CGPoint(x: calHeadX, y: calHeadY),
+            calibratedPupilPoint: CGPoint(x: calPupilX, y: calPupilY)
         )
 
         DispatchQueue.main.async { [weak self] in
-            self?.onRawGazePoint?(rawGaze)
-            self?.onCalibratedGazePoint?(calibratedPoint)
-            self?.onSmoothedGazePoint?(smoothedPoint)
-            self?.onGazeUpdate?(quadrant, confidence)
+            self?.onRawEyePoint?(rawEye)
+            self?.onCalibratedEyePoint?(calibratedPoint)
+            self?.onSmoothedEyePoint?(smoothedPoint)
+            self?.onEyeUpdate?(quadrant, confidence)
             self?.onDiagnostics?(diagnostics)
             self?.onFaceObservation?(faceData)
         }
@@ -325,7 +337,7 @@ enum MediaPipeError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .scriptNotFound:
-            return "MediaPipe gaze_tracker.py not found in app bundle."
+            return "MediaPipe eye_tracker.py not found in app bundle."
         case .launchFailed(let error):
             return "Failed to launch MediaPipe process: \(error.localizedDescription)"
         }

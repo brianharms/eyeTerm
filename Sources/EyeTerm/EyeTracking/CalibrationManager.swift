@@ -4,6 +4,8 @@ import CoreGraphics
 struct CalibrationResult {
     let headTransform: CGAffineTransform
     let pupilTransform: CGAffineTransform
+    let parallaxCorrX: Double
+    let parallaxCorrY: Double
 }
 
 final class CalibrationManager {
@@ -11,17 +13,23 @@ final class CalibrationManager {
     // MARK: - Configuration
 
     private static let targetPositions: [CGPoint] = [
-        CGPoint(x: 0.5, y: 0.5),   // center
-        CGPoint(x: 0.15, y: 0.15), // near top-left
-        CGPoint(x: 0.85, y: 0.15), // near top-right
-        CGPoint(x: 0.15, y: 0.85), // near bottom-left
-        CGPoint(x: 0.85, y: 0.85)  // near bottom-right
+        CGPoint(x: 0.5, y: 0.5),    // center
+        CGPoint(x: 0.05, y: 0.05),  // top-left
+        CGPoint(x: 0.95, y: 0.05),  // top-right
+        CGPoint(x: 0.05, y: 0.95),  // bottom-left
+        CGPoint(x: 0.95, y: 0.95),  // bottom-right
+        CGPoint(x: 0.5, y: 0.05),   // top-center
+        CGPoint(x: 0.5, y: 0.95),   // bottom-center
+        CGPoint(x: 0.05, y: 0.5),   // left-center
+        CGPoint(x: 0.95, y: 0.5),   // right-center
     ]
 
     private static let samplesPerTarget = 45
     private static let settleFrames = 30
     private static let headDefaultsKey = "HeadCalibrationTransform"
     private static let pupilDefaultsKey = "PupilCalibrationTransform"
+    private static let parallaxCorrXKey = "ParallaxCorrX"
+    private static let parallaxCorrYKey = "ParallaxCorrY"
 
     // MARK: - Public state
 
@@ -56,9 +64,15 @@ final class CalibrationManager {
     private var collectedPupilSamples: [[CGPoint]] = []
     private var currentHeadSamples: [CGPoint] = []
     private var currentPupilSamples: [CGPoint] = []
+    private var collectedHeadYawSamples: [[Double]] = []
+    private var collectedHeadPitchSamples: [[Double]] = []
+    private var currentHeadYawSamples: [Double] = []
+    private var currentHeadPitchSamples: [Double] = []
     private var settleCount = 0
     private var headTransform: CGAffineTransform?
     private var pupilTransform: CGAffineTransform?
+    private var savedParallaxCorrX: Double = 0.0
+    private var savedParallaxCorrY: Double = 0.0
 
     // MARK: - Init
 
@@ -74,6 +88,10 @@ final class CalibrationManager {
         collectedPupilSamples = []
         currentHeadSamples = []
         currentPupilSamples = []
+        collectedHeadYawSamples = []
+        collectedHeadPitchSamples = []
+        currentHeadYawSamples = []
+        currentHeadPitchSamples = []
         settleCount = 0
         isSettling = true
         isCalibrated = false
@@ -86,7 +104,7 @@ final class CalibrationManager {
         }
     }
 
-    func recordSample(headPoint: CGPoint, pupilPoint: CGPoint) {
+    func recordSample(headPoint: CGPoint, pupilPoint: CGPoint, headYaw: Double, headPitch: Double) {
         guard currentTargetIndex < totalTargets else { return }
 
         if settleCount < Self.settleFrames {
@@ -101,6 +119,8 @@ final class CalibrationManager {
         isSettling = false
         currentHeadSamples.append(headPoint)
         currentPupilSamples.append(pupilPoint)
+        currentHeadYawSamples.append(headYaw)
+        currentHeadPitchSamples.append(headPitch)
 
         if let pos = currentTargetPosition {
             onTargetProgressUpdate?(pos, progress)
@@ -109,8 +129,12 @@ final class CalibrationManager {
         if currentHeadSamples.count >= Self.samplesPerTarget {
             collectedHeadSamples.append(currentHeadSamples)
             collectedPupilSamples.append(currentPupilSamples)
+            collectedHeadYawSamples.append(currentHeadYawSamples)
+            collectedHeadPitchSamples.append(currentHeadPitchSamples)
             currentHeadSamples = []
             currentPupilSamples = []
+            currentHeadYawSamples = []
+            currentHeadPitchSamples = []
             settleCount = 0
             isSettling = true
             currentTargetIndex += 1
@@ -135,38 +159,127 @@ final class CalibrationManager {
         collectedPupilSamples = []
         currentHeadSamples = []
         currentPupilSamples = []
+        collectedHeadYawSamples = []
+        collectedHeadPitchSamples = []
+        currentHeadYawSamples = []
+        currentHeadPitchSamples = []
         UserDefaults.standard.removeObject(forKey: Self.headDefaultsKey)
         UserDefaults.standard.removeObject(forKey: Self.pupilDefaultsKey)
+        UserDefaults.standard.removeObject(forKey: Self.parallaxCorrXKey)
+        UserDefaults.standard.removeObject(forKey: Self.parallaxCorrYKey)
+    }
+
+    // MARK: - Parallax coefficient learning
+
+    /// Compute parallax correction coefficients from within-target head drift.
+    /// For each target, the user's gaze is fixed but head may drift slightly.
+    /// The covariance of (headYaw, pupilX) within each target gives the parallax slope.
+    /// Average slopes across all targets for a robust estimate.
+    private func computeParallaxCoefficients() -> (corrX: Double, corrY: Double) {
+        var slopesX: [Double] = []
+        var slopesY: [Double] = []
+
+        for i in 0..<collectedPupilSamples.count {
+            let pupils = collectedPupilSamples[i]
+            let yaws = collectedHeadYawSamples[i]
+            let pitches = collectedHeadPitchSamples[i]
+            let n = pupils.count
+            guard n > 2 else { continue }
+
+            // Compute slope of pupilX vs headYaw via cov/var
+            let meanYaw = yaws.reduce(0, +) / Double(n)
+            let meanPupilX = pupils.map { Double($0.x) }.reduce(0, +) / Double(n)
+            var covXYaw = 0.0
+            var varYaw = 0.0
+            for j in 0..<n {
+                let dy = yaws[j] - meanYaw
+                let dpx = Double(pupils[j].x) - meanPupilX
+                covXYaw += dy * dpx
+                varYaw += dy * dy
+            }
+            if varYaw > 1e-12 {
+                slopesX.append(covXYaw / varYaw)
+            }
+
+            // Compute slope of pupilY vs headPitch via cov/var
+            let meanPitch = pitches.reduce(0, +) / Double(n)
+            let meanPupilY = pupils.map { Double($0.y) }.reduce(0, +) / Double(n)
+            var covYPitch = 0.0
+            var varPitch = 0.0
+            for j in 0..<n {
+                let dp = pitches[j] - meanPitch
+                let dpy = Double(pupils[j].y) - meanPupilY
+                covYPitch += dp * dpy
+                varPitch += dp * dp
+            }
+            if varPitch > 1e-12 {
+                slopesY.append(covYPitch / varPitch)
+            }
+        }
+
+        // The slope tells us how much pupil drifts per unit of head rotation.
+        // To compensate, we negate it: compPupilX = pupilX + corrX * yaw
+        // where corrX = -slope
+        let corrX = slopesX.isEmpty ? 0.0 : -(slopesX.reduce(0, +) / Double(slopesX.count))
+        let corrY = slopesY.isEmpty ? 0.0 : -(slopesY.reduce(0, +) / Double(slopesY.count))
+
+        return (corrX, corrY)
     }
 
     // MARK: - Calibration math
 
-    /// Compute an affine transform that maps averaged gaze samples → target positions.
-    ///
-    /// An affine transform in 2D has 6 parameters (a, b, tx, c, d, ty):
-    ///   targetX = a * gazeX + b * gazeY + tx
-    ///   targetY = c * gazeX + d * gazeY + ty
-    ///
-    /// With 5 point pairs (overdetermined), solve via least-squares (normal equations).
+    /// Compute affine transforms that map averaged gaze samples to target positions.
+    /// First learns parallax coefficients, then compensates pupil data before fitting.
     private func finishCalibration() {
         guard collectedHeadSamples.count == totalTargets,
               collectedPupilSamples.count == totalTargets else { return }
 
+        // Step 1: Learn parallax coefficients from raw data
+        let parallax = computeParallaxCoefficients()
+        let corrX = parallax.corrX
+        let corrY = parallax.corrY
+
+        // Step 2: Compensate pupil samples using learned coefficients
+        var compensatedPupilSamples: [[CGPoint]] = []
+        for i in 0..<collectedPupilSamples.count {
+            let pupils = collectedPupilSamples[i]
+            let yaws = collectedHeadYawSamples[i]
+            let pitches = collectedHeadPitchSamples[i]
+            var compensated: [CGPoint] = []
+            for j in 0..<pupils.count {
+                let cx = Double(pupils[j].x) + corrX * yaws[j]
+                let cy = Double(pupils[j].y) + corrY * pitches[j]
+                compensated.append(CGPoint(x: cx, y: cy))
+            }
+            compensatedPupilSamples.append(compensated)
+        }
+
+        // Step 3: Fit affine transforms on compensated data
         let headT = solveTransform(from: collectedHeadSamples) ?? .identity
-        let pupilT = solveTransform(from: collectedPupilSamples) ?? .identity
+        let pupilT = solveTransform(from: compensatedPupilSamples) ?? .identity
 
         self.headTransform = headT
         self.pupilTransform = pupilT
+        self.savedParallaxCorrX = corrX
+        self.savedParallaxCorrY = corrY
         self.isCalibrated = true
         saveCalibration(headT, key: Self.headDefaultsKey)
         saveCalibration(pupilT, key: Self.pupilDefaultsKey)
-        onCalibrationComplete?(CalibrationResult(headTransform: headT, pupilTransform: pupilT))
+        UserDefaults.standard.set(corrX, forKey: Self.parallaxCorrXKey)
+        UserDefaults.standard.set(corrY, forKey: Self.parallaxCorrYKey)
+        print("[CalibrationManager] Parallax coefficients: corrX=\(corrX), corrY=\(corrY)")
+        onCalibrationComplete?(CalibrationResult(
+            headTransform: headT,
+            pupilTransform: pupilT,
+            parallaxCorrX: corrX,
+            parallaxCorrY: corrY
+        ))
     }
 
     private func solveTransform(from collectedSamples: [[CGPoint]]) -> CGAffineTransform? {
-        var gazeAverages: [CGPoint] = []
+        var eyeAverages: [CGPoint] = []
         for samples in collectedSamples {
-            gazeAverages.append(average(of: samples))
+            eyeAverages.append(average(of: samples))
         }
 
         let targets = Self.targetPositions
@@ -177,8 +290,8 @@ final class CalibrationManager {
         var atbY = [Double](repeating: 0, count: 3)
 
         for i in 0..<n {
-            let gx = Double(gazeAverages[i].x)
-            let gy = Double(gazeAverages[i].y)
+            let gx = Double(eyeAverages[i].x)
+            let gy = Double(eyeAverages[i].y)
             let row = [gx, gy, 1.0]
             let tx = Double(targets[i].x)
             let ty = Double(targets[i].y)
@@ -205,7 +318,7 @@ final class CalibrationManager {
                                  ty: CGFloat(yParams[2]))
     }
 
-    /// Solve a 3×3 linear system Ax = b using Cramer's rule.
+    /// Solve a 3x3 linear system Ax = b using Cramer's rule.
     private func solve3x3(_ A: [[Double]], _ b: [Double]) -> [Double]? {
         func det3(_ m: [[Double]]) -> Double {
             m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
@@ -237,6 +350,8 @@ final class CalibrationManager {
     private func loadSavedCalibration() {
         headTransform = loadTransform(key: Self.headDefaultsKey)
         pupilTransform = loadTransform(key: Self.pupilDefaultsKey)
+        savedParallaxCorrX = UserDefaults.standard.double(forKey: Self.parallaxCorrXKey)
+        savedParallaxCorrY = UserDefaults.standard.double(forKey: Self.parallaxCorrYKey)
         if headTransform != nil || pupilTransform != nil {
             isCalibrated = true
         }
@@ -255,7 +370,12 @@ final class CalibrationManager {
 
     var savedCalibrationResult: CalibrationResult? {
         guard let h = headTransform, let p = pupilTransform else { return nil }
-        return CalibrationResult(headTransform: h, pupilTransform: p)
+        return CalibrationResult(
+            headTransform: h,
+            pupilTransform: p,
+            parallaxCorrX: savedParallaxCorrX,
+            parallaxCorrY: savedParallaxCorrY
+        )
     }
 
     // MARK: - Helpers

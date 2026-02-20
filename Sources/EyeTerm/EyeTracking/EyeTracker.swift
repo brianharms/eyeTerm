@@ -14,10 +14,10 @@ struct FaceObservationData {
 
 final class EyeTermTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, EyeTrackingBackend {
 
-    var onGazeUpdate: ((ScreenQuadrant?, Double) -> Void)?
-    var onRawGazePoint: ((CGPoint) -> Void)?
-    var onCalibratedGazePoint: ((CGPoint) -> Void)?
-    var onSmoothedGazePoint: ((CGPoint) -> Void)?
+    var onEyeUpdate: ((ScreenQuadrant?, Double) -> Void)?
+    var onRawEyePoint: ((CGPoint) -> Void)?
+    var onCalibratedEyePoint: ((CGPoint) -> Void)?
+    var onSmoothedEyePoint: ((CGPoint) -> Void)?
     var onDiagnostics: ((EyeTermDiagnostics) -> Void)?
     var onFaceObservation: ((FaceObservationData?) -> Void)?
 
@@ -29,6 +29,26 @@ final class EyeTermTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
     var headWeight: Double {
         get { estimator.headWeight }
         set { estimator.headWeight = newValue }
+    }
+
+    var headPitchSensitivity: Double {
+        get { estimator.headPitchSensitivity }
+        set { estimator.headPitchSensitivity = newValue }
+    }
+
+    var parallaxCorrX: Double {
+        get { estimator.parallaxCorrX }
+        set { estimator.parallaxCorrX = newValue }
+    }
+
+    var parallaxCorrY: Double {
+        get { estimator.parallaxCorrY }
+        set { estimator.parallaxCorrY = newValue }
+    }
+
+    var headAmplification: Double {
+        get { estimator.headAmplification }
+        set { estimator.headAmplification = newValue }
     }
 
     private(set) var isRunning = false
@@ -170,21 +190,21 @@ final class EyeTermTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
         // Extract face observation data for camera preview overlay
         let faceData = extractFaceData(from: face)
 
-        guard let gaze = estimator.estimateGaze(from: face, yawOverride: yawOverride, pitchOverride: pitchOverride) else {
+        guard let result = estimator.estimateEye(from: face, yawOverride: yawOverride, pitchOverride: pitchOverride) else {
             reportUpdate(quadrant: nil, confidence: 0)
             reportFaceObservation(faceData)
             return
         }
 
-        let smoothedPoint = emaFilter.update(gaze.calibratedPoint)
+        let smoothedPoint = emaFilter.update(result.calibratedPoint)
         let quadrant = ScreenQuadrant.from(normalizedPoint: smoothedPoint)
 
         DispatchQueue.main.async { [weak self] in
-            self?.onRawGazePoint?(gaze.rawPoint)
-            self?.onCalibratedGazePoint?(gaze.calibratedPoint)
-            self?.onSmoothedGazePoint?(smoothedPoint)
-            self?.onGazeUpdate?(quadrant, gaze.confidence)
-            self?.onDiagnostics?(gaze.diagnostics)
+            self?.onRawEyePoint?(result.rawPoint)
+            self?.onCalibratedEyePoint?(result.calibratedPoint)
+            self?.onSmoothedEyePoint?(smoothedPoint)
+            self?.onEyeUpdate?(quadrant, result.confidence)
+            self?.onDiagnostics?(result.diagnostics)
             self?.onFaceObservation?(faceData)
         }
     }
@@ -193,7 +213,7 @@ final class EyeTermTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
 
     private func reportUpdate(quadrant: ScreenQuadrant?, confidence: Double) {
         DispatchQueue.main.async { [weak self] in
-            self?.onGazeUpdate?(quadrant, confidence)
+            self?.onEyeUpdate?(quadrant, confidence)
         }
     }
 

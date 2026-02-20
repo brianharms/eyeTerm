@@ -7,13 +7,13 @@ struct EyeTermDiagnostics {
     let headPitch: Double
     let pupilOffsetX: Double
     let pupilOffsetY: Double
-    let headGazePoint: CGPoint
-    let pupilGazePoint: CGPoint
-    let calibratedHeadGazePoint: CGPoint
-    let calibratedPupilGazePoint: CGPoint
+    let headPoint: CGPoint
+    let pupilPoint: CGPoint
+    let calibratedHeadPoint: CGPoint
+    let calibratedPupilPoint: CGPoint
 }
 
-struct EyeTermGazeResult {
+struct EyeTermResult {
     let rawPoint: CGPoint
     let calibratedPoint: CGPoint
     let confidence: Double
@@ -27,12 +27,16 @@ final class EyeTermEstimator {
 
     /// Balance between head pose (1.0) and pupil tracking (0.0). Default 0.85.
     var headWeight: Double = 0.85
+    var headPitchSensitivity: Double = 0.6
+    var parallaxCorrX: Double = 0.0
+    var parallaxCorrY: Double = 0.0
+    var headAmplification: Double = 3.0
 
     // MARK: - Public
 
-    func estimateGaze(from observation: VNFaceObservation,
+    func estimateEye(from observation: VNFaceObservation,
                       yawOverride: NSNumber? = nil,
-                      pitchOverride: NSNumber? = nil) -> EyeTermGazeResult? {
+                      pitchOverride: NSNumber? = nil) -> EyeTermResult? {
         guard let landmarks = observation.landmarks else { return nil }
         guard let leftPupil = landmarks.leftPupil,
               let rightPupil = landmarks.rightPupil,
@@ -46,7 +50,7 @@ final class EyeTermEstimator {
 
         // Map head rotation to normalised screen position.
         let headX = 0.5 - (yaw / 1.0)
-        let headY = 0.5 + (pitch / 0.3)
+        let headY = 0.5 + (pitch / headPitchSensitivity)
 
         // --- Pupil offset within eye sockets (fine gaze) ---
         let leftOffset = pupilOffset(pupil: leftPupil, eye: leftEye, boundingBox: observation.boundingBox)
@@ -59,19 +63,27 @@ final class EyeTermEstimator {
         let pupilX = Double(1.0 - avgPupilOffsetX)
         let pupilY = Double(1.0 - avgPupilOffsetY)
 
+        // --- Parallax compensation: remove head-rotation artifacts from pupil ---
+        let compPupilX = pupilX + parallaxCorrX * yaw
+        let compPupilY = pupilY + parallaxCorrY * pitch
+
+        // --- Head amplification: stretch small head movements ---
+        let ampHeadX = 0.5 + (headX - 0.5) * headAmplification
+        let ampHeadY = 0.5 + (headY - 0.5) * headAmplification
+
         // --- Apply per-signal calibration ---
-        var calHeadX = headX
-        var calHeadY = headY
+        var calHeadX = ampHeadX
+        var calHeadY = ampHeadY
         if let t = headCalibrationTransform {
-            let p = CGPoint(x: headX, y: headY).applying(t)
+            let p = CGPoint(x: ampHeadX, y: ampHeadY).applying(t)
             calHeadX = clamp(Double(p.x), min: 0, max: 1)
             calHeadY = clamp(Double(p.y), min: 0, max: 1)
         }
 
-        var calPupilX = pupilX
-        var calPupilY = pupilY
+        var calPupilX = compPupilX
+        var calPupilY = compPupilY
         if let t = pupilCalibrationTransform {
-            let p = CGPoint(x: pupilX, y: pupilY).applying(t)
+            let p = CGPoint(x: compPupilX, y: compPupilY).applying(t)
             calPupilX = clamp(Double(p.x), min: 0, max: 1)
             calPupilY = clamp(Double(p.y), min: 0, max: 1)
         }
@@ -97,13 +109,13 @@ final class EyeTermEstimator {
             headPitch: pitch,
             pupilOffsetX: Double(avgPupilOffsetX),
             pupilOffsetY: Double(avgPupilOffsetY),
-            headGazePoint: CGPoint(x: clamp(headX, min: 0, max: 1), y: clamp(headY, min: 0, max: 1)),
-            pupilGazePoint: CGPoint(x: clamp(pupilX, min: 0, max: 1), y: clamp(pupilY, min: 0, max: 1)),
-            calibratedHeadGazePoint: CGPoint(x: calHeadX, y: calHeadY),
-            calibratedPupilGazePoint: CGPoint(x: calPupilX, y: calPupilY)
+            headPoint: CGPoint(x: clamp(headX, min: 0, max: 1), y: clamp(headY, min: 0, max: 1)),
+            pupilPoint: CGPoint(x: clamp(pupilX, min: 0, max: 1), y: clamp(pupilY, min: 0, max: 1)),
+            calibratedHeadPoint: CGPoint(x: calHeadX, y: calHeadY),
+            calibratedPupilPoint: CGPoint(x: calPupilX, y: calPupilY)
         )
 
-        return EyeTermGazeResult(rawPoint: rawPoint, calibratedPoint: calibratedPoint, confidence: confidence, diagnostics: diagnostics)
+        return EyeTermResult(rawPoint: rawPoint, calibratedPoint: calibratedPoint, confidence: confidence, diagnostics: diagnostics)
     }
 
     // MARK: - Helpers

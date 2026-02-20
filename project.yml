@@ -1,6 +1,6 @@
-name: GazeTerminal
+name: eyeTerm
 options:
-  bundleIdPrefix: com.gazeterminal
+  bundleIdPrefix: com.eyeterm
   deploymentTarget:
     macOS: "14.0"
   createIntermediateGroups: true
@@ -14,15 +14,15 @@ packages:
     branch: master
 
 targets:
-  GazeTerminal:
+  eyeTerm:
     type: application
     platform: macOS
     sources:
-      - Sources/GazeTerminal
+      - Sources/EyeTerm
     postCompileScripts:
       - script: |
-          cp "${PROJECT_DIR}/Resources/gaze_tracker.py" "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Resources/gaze_tracker.py"
-          cp "${PROJECT_DIR}/Resources/test_gaze.py" "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Resources/test_gaze.py"
+          cp "${PROJECT_DIR}/Resources/eye_tracker.py" "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Resources/eye_tracker.py"
+          cp "${PROJECT_DIR}/Resources/test_eye.py" "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Resources/test_eye.py"
           # Copy bundled whisper.cpp ggml models
           mkdir -p "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Resources/Models/ggml"
           cp -n "${PROJECT_DIR}/Resources/Models/ggml/"*.bin "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Resources/Models/ggml/" 2>/dev/null || true
@@ -41,9 +41,9 @@ targets:
         name: Clean Resource Attributes
     settings:
       base:
-        CODE_SIGN_ENTITLEMENTS: GazeTerminal.entitlements
+        CODE_SIGN_ENTITLEMENTS: EyeTerm.entitlements
         INFOPLIST_FILE: Info.plist
-        PRODUCT_BUNDLE_IDENTIFIER: com.gazeterminal.app
+        PRODUCT_BUNDLE_IDENTIFIER: com.eyeterm.app
         MARKETING_VERSION: "1.0.0"
         CURRENT_PROJECT_VERSION: "1"
         PRODUCT_NAME: eyeTerm

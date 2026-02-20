@@ -9,6 +9,16 @@ final class CommandParser {
     var enableNormalization: Bool = true
     var executeKeyword: String = "run it"
 
+    /// Regex that matches text inside square brackets or parentheses (e.g. [inaudible], (silence)).
+    private static let bracketedPattern = try! NSRegularExpression(pattern: "\\[.*?\\]|\\(.*?\\)", options: [])
+
+    private func stripBracketedText(_ text: String) -> String {
+        let range = NSRange(location: 0, length: (text as NSString).length)
+        return Self.bracketedPattern
+            .stringByReplacingMatches(in: text, range: range, withTemplate: "")
+            .trimmingCharacters(in: .whitespaces)
+    }
+
     private static let normalizations: [(pattern: String, replacement: String)] = [
         ("at sign", "@"),
         ("backslash", "\\"),
@@ -31,6 +41,8 @@ final class CommandParser {
     ]
 
     func parse(_ transcription: String) -> [ParsedCommand] {
+        let cleaned = stripBracketedText(transcription)
+        guard !cleaned.isEmpty else { return [] }
         let words = executeKeyword
             .trimmingCharacters(in: .whitespaces)
             .components(separatedBy: .whitespaces)
@@ -40,15 +52,15 @@ final class CommandParser {
         let pattern = words.joined(separator: "\\s+")
         guard !pattern.isEmpty,
               let regex = try? NSRegularExpression(pattern: "\\b\(pattern)\\b", options: .caseInsensitive) else {
-            return processText(transcription)
+            return processText(cleaned)
         }
 
-        let nsString = transcription as NSString
+        let nsString = cleaned as NSString
         let fullRange = NSRange(location: 0, length: nsString.length)
-        let matches = regex.matches(in: transcription, range: fullRange)
+        let matches = regex.matches(in: cleaned, range: fullRange)
 
         if matches.isEmpty {
-            return processText(transcription)
+            return processText(cleaned)
         }
 
         var commands: [ParsedCommand] = []
@@ -71,6 +83,23 @@ final class CommandParser {
         }
 
         return commands
+    }
+
+    func normalizeOnly(_ text: String) -> String {
+        let cleaned = stripBracketedText(text)
+        guard !cleaned.isEmpty else { return "" }
+        guard enableNormalization else {
+            return cleaned
+        }
+        var result = cleaned
+        for (pattern, replacement) in Self.normalizations {
+            let escaped = NSRegularExpression.escapedPattern(for: pattern)
+            if let regex = try? NSRegularExpression(pattern: "\\b\(escaped)\\b", options: .caseInsensitive) {
+                let range = NSRange(location: 0, length: (result as NSString).length)
+                result = regex.stringByReplacingMatches(in: result, range: range, withTemplate: replacement)
+            }
+        }
+        return result.trimmingCharacters(in: .whitespaces)
     }
 
     private func processText(_ text: String) -> [ParsedCommand] {

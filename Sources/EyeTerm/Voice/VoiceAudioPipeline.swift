@@ -3,8 +3,10 @@ import AVFoundation
 final class VoiceAudioPipeline {
     var onAudioLevel: ((Float, Bool) -> Void)?
     var onSpeechSegmentReady: (([Float]) -> Void)?
+    var onInterimAudioReady: (([Float]) -> Void)?
     var silenceThreshold: Float = 0.01
     var silenceDuration: TimeInterval = 0.5
+    var interimInterval: TimeInterval = 1.0
 
     private(set) var isRunning = false
 
@@ -12,6 +14,7 @@ final class VoiceAudioPipeline {
     private let bufferManager = AudioBufferManager()
     private var isSpeaking = false
     private var silenceStart: Date?
+    private var lastInterimEmit: Date?
 
     func start() async throws {
         guard !isRunning else { return }
@@ -108,6 +111,18 @@ final class VoiceAudioPipeline {
         if rms >= silenceThreshold {
             isSpeaking = true
             silenceStart = nil
+
+            // Emit interim audio snapshots while speaking
+            let now = Date()
+            let bufferDuration = bufferManager.durationSeconds
+            let timeSinceLastInterim = lastInterimEmit.map { now.timeIntervalSince($0) } ?? .infinity
+            if bufferDuration >= 0.5 && timeSinceLastInterim >= interimInterval {
+                lastInterimEmit = now
+                let snapshot = bufferManager.getBuffer()
+                if !snapshot.isEmpty {
+                    onInterimAudioReady?(snapshot)
+                }
+            }
         } else if isSpeaking {
             if silenceStart == nil {
                 silenceStart = Date()
@@ -115,6 +130,7 @@ final class VoiceAudioPipeline {
             if let start = silenceStart, Date().timeIntervalSince(start) >= silenceDuration {
                 isSpeaking = false
                 silenceStart = nil
+                lastInterimEmit = nil
                 emitSpeechSegment()
             }
         }

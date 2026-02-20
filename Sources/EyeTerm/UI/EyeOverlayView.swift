@@ -28,12 +28,12 @@ private struct SubtleOverlayContent: View {
     var body: some View {
         let midX = size.width / 2
         let midY = size.height / 2
-        let smoothX = appState.smoothedGazePoint.x * size.width
-        let smoothY = appState.smoothedGazePoint.y * size.height
+        let smoothX = appState.smoothedEyePoint.x * size.width
+        let smoothY = appState.smoothedEyePoint.y * size.height
 
         Circle()
-            .fill(.blue.opacity(appState.subtleGazeOpacity))
-            .frame(width: appState.subtleGazeSize, height: appState.subtleGazeSize)
+            .fill(.blue.opacity(appState.subtleEyeOpacity))
+            .frame(width: appState.subtleEyeSize, height: appState.subtleEyeSize)
             .position(x: smoothX, y: smoothY)
 
         ForEach(ScreenQuadrant.allCases) { quadrant in
@@ -81,12 +81,12 @@ private struct DebugOverlayContent: View {
     var body: some View {
         let midX = size.width / 2
         let midY = size.height / 2
-        let rawX = appState.rawGazePoint.x * size.width
-        let rawY = appState.rawGazePoint.y * size.height
-        let calX = appState.calibratedGazePoint.x * size.width
-        let calY = appState.calibratedGazePoint.y * size.height
-        let smoothX = appState.smoothedGazePoint.x * size.width
-        let smoothY = appState.smoothedGazePoint.y * size.height
+        let rawX = appState.rawEyePoint.x * size.width
+        let rawY = appState.rawEyePoint.y * size.height
+        let calX = appState.calibratedEyePoint.x * size.width
+        let calY = appState.calibratedEyePoint.y * size.height
+        let smoothX = appState.smoothedEyePoint.x * size.width
+        let smoothY = appState.smoothedEyePoint.y * size.height
 
         // Quadrant fills
         if appState.showQuadrantHighlighting {
@@ -162,10 +162,10 @@ private struct DebugOverlayContent: View {
 
         // Raw overlay layer
         if appState.showRawOverlay {
-            let headPX = appState.headGazePoint.x * size.width
-            let headPY = appState.headGazePoint.y * size.height
-            let pupilPX = appState.pupilGazePoint.x * size.width
-            let pupilPY = appState.pupilGazePoint.y * size.height
+            let headPX = appState.headEyePoint.x * size.width
+            let headPY = appState.headEyePoint.y * size.height
+            let pupilPX = appState.pupilEyePoint.x * size.width
+            let pupilPY = appState.pupilEyePoint.y * size.height
 
             Circle()
                 .fill(.black)
@@ -200,10 +200,10 @@ private struct DebugOverlayContent: View {
 
         // Calibrated overlay layer
         if appState.showCalibratedOverlay {
-            let calHeadPX = appState.calibratedHeadGazePoint.x * size.width
-            let calHeadPY = appState.calibratedHeadGazePoint.y * size.height
-            let calPupilPX = appState.calibratedPupilGazePoint.x * size.width
-            let calPupilPY = appState.calibratedPupilGazePoint.y * size.height
+            let calHeadPX = appState.calibratedHeadEyePoint.x * size.width
+            let calHeadPY = appState.calibratedHeadEyePoint.y * size.height
+            let calPupilPX = appState.calibratedPupilEyePoint.x * size.width
+            let calPupilPY = appState.calibratedPupilEyePoint.y * size.height
 
             Circle()
                 .fill(.black)
@@ -261,33 +261,33 @@ private struct DebugOverlayContent: View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 4) {
                 Image(systemName: "person.fill").font(.system(size: 8)).foregroundStyle(.red)
-                Text("Head: \(f(appState.headGazePoint.x)), \(f(appState.headGazePoint.y))")
+                Text("Head: \(f(appState.headEyePoint.x)), \(f(appState.headEyePoint.y))")
             }
             HStack(spacing: 4) {
                 Image(systemName: "eye.fill").font(.system(size: 8)).foregroundStyle(.red)
-                Text("Pupil: \(f(appState.pupilGazePoint.x)), \(f(appState.pupilGazePoint.y))")
+                Text("Pupil: \(f(appState.pupilEyePoint.x)), \(f(appState.pupilEyePoint.y))")
             }
             HStack(spacing: 4) {
                 Image(systemName: "person.fill").font(.system(size: 8)).foregroundStyle(.green)
-                Text("Cal Head: \(f(appState.calibratedHeadGazePoint.x)), \(f(appState.calibratedHeadGazePoint.y))")
+                Text("Cal Head: \(f(appState.calibratedHeadEyePoint.x)), \(f(appState.calibratedHeadEyePoint.y))")
             }
             HStack(spacing: 4) {
                 Image(systemName: "eye.fill").font(.system(size: 8)).foregroundStyle(.green)
-                Text("Cal Pupil: \(f(appState.calibratedPupilGazePoint.x)), \(f(appState.calibratedPupilGazePoint.y))")
+                Text("Cal Pupil: \(f(appState.calibratedPupilEyePoint.x)), \(f(appState.calibratedPupilEyePoint.y))")
             }
             HStack(spacing: 4) {
                 Circle().fill(.red.opacity(0.6)).frame(width: 6, height: 6)
-                Text("Fused: \(f(appState.rawGazePoint.x)), \(f(appState.rawGazePoint.y))")
+                Text("Fused: \(f(appState.rawEyePoint.x)), \(f(appState.rawEyePoint.y))")
             }
             HStack(spacing: 4) {
                 Circle().fill(.green.opacity(0.7)).frame(width: 6, height: 6)
-                Text("Cal: \(f(appState.calibratedGazePoint.x)), \(f(appState.calibratedGazePoint.y))")
+                Text("Cal: \(f(appState.calibratedEyePoint.x)), \(f(appState.calibratedEyePoint.y))")
             }
             HStack(spacing: 4) {
                 Circle().fill(.blue).frame(width: 6, height: 6)
-                Text("Smooth: \(f(appState.smoothedGazePoint.x)), \(f(appState.smoothedGazePoint.y))")
+                Text("Smooth: \(f(appState.smoothedEyePoint.x)), \(f(appState.smoothedEyePoint.y))")
             }
-            Text("Confidence: \(Int(appState.gazeConfidence * 100))%")
+            Text("Confidence: \(Int(appState.eyeConfidence * 100))%")
             Text("Yaw: \(fd(appState.headYaw))  Pitch: \(fd(appState.headPitch))")
             if let active = appState.activeQuadrant {
                 Text("Looking: \(active.displayName)")

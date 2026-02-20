@@ -12,6 +12,7 @@ final class AppCoordinator {
     let calibrationManager = CalibrationManager()
     private(set) var activeVoiceBackend: VoiceTranscriptionBackend
     let commandParser = CommandParser()
+    let transcriptionDiffer = StreamingTranscriptionDiffer()
     let dwellTimer: DwellTimer
 
     private var calibrationOverlayWindow: NSWindow?
@@ -55,14 +56,14 @@ final class AppCoordinator {
     // MARK: - Wiring
 
     private func wireCallbacks() {
-        activeBackend.onGazeUpdate = { [weak self] quadrant, confidence in
+        activeBackend.onEyeUpdate = { [weak self] quadrant, confidence in
             guard let self else { return }
             if quadrant != self.appState.activeQuadrant {
                 self.appState.dwellingQuadrant = nil
                 self.appState.dwellProgress = 0
             }
             self.appState.activeQuadrant = quadrant
-            self.appState.gazeConfidence = confidence
+            self.appState.eyeConfidence = confidence
             self.dwellTimer.update(quadrant: quadrant)
         }
 
@@ -74,6 +75,7 @@ final class AppCoordinator {
 
         dwellTimer.onDwellConfirmed = { [weak self] quadrant in
             guard let self else { return }
+            self.transcriptionDiffer.reset()
             self.appState.focusedQuadrant = quadrant
             guard self.appState.isTerminalSetup else { return }
             Task {
@@ -90,7 +92,7 @@ final class AppCoordinator {
             self.appState.audioLevel = level
             self.appState.isSpeaking = speaking
             self.appState.audioLevelHistory.append(level)
-            if self.appState.audioLevelHistory.count > 21 {
+            if self.appState.audioLevelHistory.count > 27 {
                 self.appState.audioLevelHistory.removeFirst()
             }
         }
@@ -100,20 +102,59 @@ final class AppCoordinator {
             self.appState.voiceModelState = state
         }
 
+        activeVoiceBackend.onPartialTranscription = { [weak self] text in
+            guard let self else { return }
+            let normalized = self.commandParser.normalizeOnly(text)
+            self.appState.partialTranscription = normalized
+            guard !normalized.isEmpty else { return }
+
+            guard let quadrant = self.appState.focusedQuadrant else { return }
+            guard self.terminalManager.isSetup else { return }
+
+            let edit = self.transcriptionDiffer.diff(newText: normalized)
+            print("[AppCoordinator] Partial diff: \(edit)")
+            Task {
+                do {
+                    switch edit {
+                    case .noChange:
+                        break
+                    case .append(let str):
+                        try await self.terminalManager.typeText(str, in: quadrant)
+                    case .replaceFromOffset(let backspaces, let newText):
+                        try await self.terminalManager.sendBackspaces(backspaces, in: quadrant)
+                        if !newText.isEmpty {
+                            try await self.terminalManager.typeText(newText, in: quadrant)
+                        }
+                    }
+                } catch {
+                    print("[AppCoordinator] Partial command failed: \(error)")
+                }
+            }
+        }
+
         activeVoiceBackend.onTranscription = { [weak self] text in
             guard let self else { return }
+            self.appState.partialTranscription = ""
             self.appState.lastTranscription = text
-            self.appState.transcriptionHistory.append((text: text, timestamp: Date()))
+            let commands = self.commandParser.parse(text)
+            let cleaned = commands.compactMap { cmd -> String? in
+                if case .typeText(let s) = cmd { return s }
+                return nil
+            }.joined(separator: " ")
+            self.appState.transcriptionHistory.append((text: text, cleaned: cleaned, timestamp: Date()))
             let cutoff = Date().addingTimeInterval(-10)
             self.appState.transcriptionHistory.removeAll { $0.timestamp < cutoff }
-            let commands = self.commandParser.parse(text)
             print("[AppCoordinator] Parsed \(commands.count) commands from: \"\(text)\"")
 
             guard let quadrant = self.appState.focusedQuadrant else {
                 print("[AppCoordinator] No focused quadrant — transcription ignored. Use manual focus or eye tracking.")
+                self.transcriptionDiffer.reset()
                 return
             }
-            guard self.terminalManager.isSetup else { return }
+            guard self.terminalManager.isSetup else {
+                self.transcriptionDiffer.reset()
+                return
+            }
 
             print("[AppCoordinator] Sending to \(quadrant.displayName)")
             Task {
@@ -121,8 +162,20 @@ final class AppCoordinator {
                     do {
                         switch command {
                         case .typeText(let str):
-                            print("[AppCoordinator] Typing: \"\(str)\"")
-                            try await self.terminalManager.typeText(str, in: quadrant)
+                            // Diff final text against what's already been streamed
+                            let edit = self.transcriptionDiffer.finalize(finalText: str)
+                            print("[AppCoordinator] Final diff: \(edit)")
+                            switch edit {
+                            case .noChange:
+                                break
+                            case .append(let appendStr):
+                                try await self.terminalManager.typeText(appendStr, in: quadrant)
+                            case .replaceFromOffset(let backspaces, let newText):
+                                try await self.terminalManager.sendBackspaces(backspaces, in: quadrant)
+                                if !newText.isEmpty {
+                                    try await self.terminalManager.typeText(newText, in: quadrant)
+                                }
+                            }
                         case .execute:
                             print("[AppCoordinator] Sending Return")
                             try await self.terminalManager.sendReturn(in: quadrant)
@@ -132,6 +185,7 @@ final class AppCoordinator {
                         self.appState.addError("Command failed: \(error.localizedDescription)")
                     }
                 }
+                self.transcriptionDiffer.reset()
             }
         }
 
@@ -139,6 +193,10 @@ final class AppCoordinator {
             guard let self else { return }
             self.activeBackend.headCalibrationTransform = result.headTransform
             self.activeBackend.pupilCalibrationTransform = result.pupilTransform
+            self.activeBackend.parallaxCorrX = result.parallaxCorrX
+            self.activeBackend.parallaxCorrY = result.parallaxCorrY
+            self.appState.parallaxCorrX = result.parallaxCorrX
+            self.appState.parallaxCorrY = result.parallaxCorrY
             self.appState.isCalibrated = true
             self.dismissCalibrationOverlay()
         }
@@ -148,19 +206,19 @@ final class AppCoordinator {
             self.appState.calibrationSamples = self.calibrationManager.currentTargetIndex
         }
 
-        activeBackend.onRawGazePoint = { [weak self] point in
+        activeBackend.onRawEyePoint = { [weak self] point in
             guard let self else { return }
-            self.appState.rawGazePoint = self.debugRawFusedFilter.update(point)
+            self.appState.rawEyePoint = self.debugRawFusedFilter.update(point)
         }
 
-        activeBackend.onCalibratedGazePoint = { [weak self] point in
+        activeBackend.onCalibratedEyePoint = { [weak self] point in
             guard let self else { return }
-            self.appState.calibratedGazePoint = self.debugCalFusedFilter.update(point)
+            self.appState.calibratedEyePoint = self.debugCalFusedFilter.update(point)
         }
 
-        activeBackend.onSmoothedGazePoint = { [weak self] point in
+        activeBackend.onSmoothedEyePoint = { [weak self] point in
             guard let self else { return }
-            self.appState.smoothedGazePoint = point
+            self.appState.smoothedEyePoint = point
         }
 
         activeBackend.onDiagnostics = { [weak self] diagnostics in
@@ -169,13 +227,15 @@ final class AppCoordinator {
             self.appState.headPitch = diagnostics.headPitch
             self.appState.pupilOffsetX = diagnostics.pupilOffsetX
             self.appState.pupilOffsetY = diagnostics.pupilOffsetY
-            self.appState.headGazePoint = self.debugHeadFilter.update(diagnostics.headGazePoint)
-            self.appState.pupilGazePoint = self.debugPupilFilter.update(diagnostics.pupilGazePoint)
-            self.appState.calibratedHeadGazePoint = self.debugCalHeadFilter.update(diagnostics.calibratedHeadGazePoint)
-            self.appState.calibratedPupilGazePoint = self.debugCalPupilFilter.update(diagnostics.calibratedPupilGazePoint)
+            self.appState.headEyePoint = self.debugHeadFilter.update(diagnostics.headPoint)
+            self.appState.pupilEyePoint = self.debugPupilFilter.update(diagnostics.pupilPoint)
+            self.appState.calibratedHeadEyePoint = self.debugCalHeadFilter.update(diagnostics.calibratedHeadPoint)
+            self.appState.calibratedPupilEyePoint = self.debugCalPupilFilter.update(diagnostics.calibratedPupilPoint)
             self.calibrationManager.recordSample(
-                headPoint: diagnostics.headGazePoint,
-                pupilPoint: diagnostics.pupilGazePoint
+                headPoint: diagnostics.headPoint,
+                pupilPoint: diagnostics.pupilPoint,
+                headYaw: diagnostics.headYaw,
+                headPitch: diagnostics.headPitch
             )
         }
 
@@ -198,8 +258,12 @@ final class AppCoordinator {
             _ = appState.dwellTimeThreshold
             _ = appState.hysteresisDelay
             _ = appState.enableTextNormalization
-            _ = appState.gazeSmoothing
+            _ = appState.eyeSmoothing
             _ = appState.headWeight
+            _ = appState.headPitchSensitivity
+            _ = appState.parallaxCorrX
+            _ = appState.parallaxCorrY
+            _ = appState.headAmplification
             _ = appState.executeKeyword
             _ = appState.overlayMode
             _ = appState.debugSmoothing
@@ -222,8 +286,12 @@ final class AppCoordinator {
         dwellTimer.hysteresisDelay = appState.hysteresisDelay
         commandParser.enableNormalization = appState.enableTextNormalization
         commandParser.executeKeyword = appState.executeKeyword
-        activeBackend.smoothingAlpha = appState.gazeSmoothing
+        activeBackend.smoothingAlpha = appState.eyeSmoothing
         activeBackend.headWeight = appState.headWeight
+        activeBackend.headPitchSensitivity = appState.headPitchSensitivity
+        activeBackend.parallaxCorrX = appState.parallaxCorrX
+        activeBackend.parallaxCorrY = appState.parallaxCorrY
+        activeBackend.headAmplification = appState.headAmplification
         activeVoiceBackend.silenceThreshold = Float(appState.micSensitivity)
         let da = appState.debugSmoothing
         debugHeadFilter.alpha = da
@@ -449,6 +517,7 @@ final class AppCoordinator {
     func switchVoiceBackend(to backend: VoiceBackend) {
         let wasRunning = activeVoiceBackend.isRunning
         if wasRunning { stopVoice() }
+        transcriptionDiffer.reset()
 
         appState.voiceBackend = backend
         activeVoiceBackend = backend == .whisperCpp
