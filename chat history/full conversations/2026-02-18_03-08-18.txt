@@ -1,0 +1,600 @@
+ASSISTANT:
+
+
+
+
+---
+
+ASSISTANT:
+Let me take a look at what's in that directory.
+
+---
+
+ASSISTANT:
+Found it — **GazeTerminal**. Let me explore what's in there.
+
+---
+
+ASSISTANT:
+Got a full picture of **eyeTerm** — your macOS menu bar app that lets you control iTerm2 terminals with your eyes and voice. It uses eye tracking (dual backend: Apple Vision or MediaPipe) to detect which screen quadrant you're looking at, dwells to focus that terminal window, and then WhisperKit transcribes speech into keystrokes.
+
+It's a working prototype with a recent fix for camera preview coordinates and a calibration freeze bug. The last session was earlier today.
+
+What would you like to work on? Some open items from last session include verifying the overlay accuracy after the aspect ratio fix, the MediaPipe horizontal mirroring question, and settings not persisting across launches — but happy to go wherever you want.
+
+---
+
+ASSISTANT:
+
+
+
+
+---
+
+ASSISTANT:
+Let me build the project and get it running.
+
+---
+
+ASSISTANT:
+Build succeeded. Now let me launch it.
+
+---
+
+ASSISTANT:
+eyeTerm is built and launched — you should see it in your menu bar. Go ahead and play with it and let me know what you notice. I'll be ready to fix whatever comes up.
+
+---
+
+ASSISTANT:
+
+
+
+
+---
+
+ASSISTANT:
+Two clear issues — let me dig into the code for both.
+
+---
+
+ASSISTANT:
+
+
+
+
+---
+
+ASSISTANT:
+Got full clarity on both issues. Let me fix them now.
+
+**Camera restart bug**: The `stop()` method pauses the capture session but never removes the camera input/output, so when `start()` runs again it tries to add them to a session that already has them and fails.
+
+**Quadrant source bug**: The MediaPipe backend lets Python's raw quadrant override the Swift-side calibrated+smoothed quadrant. Also the Apple Vision backend never fires the calibrated gaze callback.
+
+Let me read and fix both files.
+
+---
+
+ASSISTANT:
+Now I'll apply both fixes.
+
+---
+
+ASSISTANT:
+Now let me rebuild and relaunch.
+
+---
+
+ASSISTANT:
+Done — rebuilt and relaunched. Here's what changed:
+
+1. **Camera restart fix** — stopping tracking now fully removes the camera input and output from the capture session, so restarting cleanly re-adds them instead of failing with "no camera found."
+
+2. **Quadrant now driven by calibrated+smoothed point** — the MediaPipe backend was letting Python's raw quadrant override your Swift-side calibration and smoothing. That's removed; the smoothed point always determines the active quadrant now. Also wired up the missing calibrated gaze callback for the Apple Vision backend.
+
+Try toggling tracking on/off and see if the camera comes back. Also check if the quadrant selection feels more responsive to calibration.
+
+---
+
+ASSISTANT:
+
+
+
+
+---
+
+ASSISTANT:
+Found two real bugs stacking against vertical tracking.
+
+**Bug 1**: The pitch normalization divisor is 0.6, but realistic head pitch range is only about ±0.15–0.25 radians — so the vertical signal gets compressed into a narrow band and saturates quickly. The yaw divisor is 1.0 which works fine for horizontal because people move their heads more side-to-side.
+
+**Bug 2**: Pupil Y offset is computed within the eye bounding box, which is a razor-thin horizontal slit. Tiny landmark jitter swings the vertical pupil signal wildly — it's pure noise. Horizontal doesn't have this problem because the eye is much wider than it is tall.
+
+Let me fix both.
+
+---
+
+ASSISTANT:
+Rebuilt and relaunched. Two changes:
+
+1. **Pitch divisor halved** (0.6 → 0.3) — people tilt their head far less vertically than horizontally, so the old mapping was compressing the vertical signal into a narrow band. Now ±0.15 radians of head tilt covers the full vertical range instead of barely moving the dot.
+
+2. **Pupil Y neutralized** — the eye is a thin horizontal slit in Vision landmarks, so the vertical pupil position within that tiny box was pure noise. Vertical gaze now relies entirely on head pitch (which is the reliable signal). Horizontal still uses the pupil for fine-grained tracking since the eye is wide enough for that to work well.
+
+Give it a try and see how up/down feels now.
+
+---
+
+ASSISTANT:
+
+
+
+
+---
+
+ASSISTANT:
+I see the current setup — the overlay shows "active" (gaze entered) and "focused" (dwell confirmed), but nothing in between. I'll add a dwell progress indicator — a border stroke around the quadrant that brightens as the dwell timer fills up, giving you a visual countdown to activation.
+
+---
+
+ASSISTANT:
+Now add the state properties and wire the callback.
+
+---
+
+ASSISTANT:
+I also need to clear the dwell progress when gaze leaves or when dwell confirms. Let me also clear it when the quadrant changes.
+
+---
+
+ASSISTANT:
+Now update the overlay to show the dwell progress as a border stroke.
+
+---
+
+ASSISTANT:
+Done — rebuilt and launched. Here's what you'll see now:
+
+- When your gaze enters a quadrant, a **cyan border stroke** starts appearing around that quadrant, growing in opacity and thickness as the dwell timer fills up (from barely visible to solid).
+- Once the dwell threshold is met and the quadrant becomes **confirmed/focused**, the border snaps to a solid cyan stroke.
+- When your gaze leaves, the progress resets immediately.
+
+This works in both the subtle and debug overlay modes. Try it out and let me know how it feels.
+
+---
+
+ASSISTANT:
+
+
+
+
+---
+
+ASSISTANT:
+This sounds like yaw and pitch are coming back as nil from Vision, silently defaulting to zero. That would make head pose stuck at center, leaving only the 15% pupil weight to move things. Let me confirm and fix it.
+
+---
+
+ASSISTANT:
+Found the issue. The code only runs `VNDetectFaceLandmarksRequest`, which doesn't reliably populate `yaw` and `pitch` on the face observation — they're likely returning nil every frame, defaulting to 0, which locks head pose at dead center. Only the 15% pupil weight moves anything.
+
+The fix is to run `VNDetectFaceRectanglesRequest` first (which reliably provides yaw/pitch), then feed those observations into the landmarks request. This is Apple's recommended two-step pattern.
+
+---
+
+ASSISTANT:
+Now I need to pass the yaw/pitch overrides to the estimator. Let me update the estimator to accept optional overrides, or simpler — update the tracker to build a wrapper.
+
+---
+
+ASSISTANT:
+I'll update the estimator to accept yaw/pitch overrides and pass them from the tracker.
+
+---
+
+ASSISTANT:
+Done — rebuilt and launched. The problem was that `VNDetectFaceLandmarksRequest` alone wasn't populating yaw and pitch on the face observations, so they silently defaulted to zero. Head pose was locked at dead center, and only the 15% pupil weight was doing anything.
+
+Now the tracker runs `VNDetectFaceRectanglesRequest` first (which reliably provides yaw/pitch), then feeds those face observations into the landmarks request. The head pose values from the rectangles pass get piped through to the estimator.
+
+You should now see head orientation actually driving the gaze point. If the debug overlay is on, check that the Yaw/Pitch values in the HUD are no longer stuck at zero. Let me know how it feels.
+
+---
+
+ASSISTANT:
+
+
+
+
+---
+
+ASSISTANT:
+For the settings question, I already know the answer from the code I've read. Let me also research webcam-based trackers for you.
+
+---
+
+ASSISTANT:
+On the settings slider question — quick answer from the code I've already read:
+
+**Apple Vision backend**: Yes, the slider works for horizontal pupil weight. When you move the head/eye balance slider, it updates the estimator's `headWeight` which directly changes the fusion ratio. However, vertical pupil is currently neutralized (we set it to constant 0.5 last fix), so the slider only affects horizontal.
+
+**MediaPipe backend**: No, the slider is a no-op. The head/eye fusion ratio is hardcoded at 0.85 inside the Python script. The Swift-side `headWeight` property exists but nothing reads it — the gaze point arrives from Python already fused.
+
+---
+
+On alternative trackers — here are the most relevant options for your setup (built-in webcam, macOS, Swift app):
+
+**L2CS-Net** is probably your best bet. It's a PyTorch model that predicts gaze yaw/pitch angles directly from a webcam frame with strong accuracy (~3.9 degrees). You could convert it to CoreML and run it fully native in Swift with no Python dependency at all. There's also a lightweight variant called MobileGaze for faster inference.
+
+**GazeFollower** (2025) is the most accurate open-source option — outputs screen coordinates directly after calibration, ~1cm accuracy. But it's Python-only and has a non-commercial license.
+
+**OpenFace 3.0** is a C++ toolkit that provides gaze vectors without calibration. Moderate accuracy but enough for quadrant detection. Builds on macOS.
+
+The CoreML conversion path for L2CS-Net is probably the most interesting direction since it would give you a fully native third backend option with no subprocess overhead and better accuracy than what Apple Vision provides out of the box. Want me to look into that?
+
+---
+
+ASSISTANT:
+
+
+
+
+---
+
+ASSISTANT:
+You're right on both counts. Let me fix these now and answer the tracker question. I need to read the Python script first to wire the fusion correctly.
+
+---
+
+ASSISTANT:
+Now I see the full picture. Python sends all the raw components (head_yaw, head_pitch, iris_ratio_x, iris_ratio_y) alongside the pre-fused gaze point. The Swift side can compute its own fusion using the slider value instead of relying on Python's hardcoded 0.85. Let me fix both issues.
+
+---
+
+ASSISTANT:
+Now fix the MediaPipe backend to compute its own fusion from raw components using the Swift-side headWeight.
+
+---
+
+ASSISTANT:
+Also need to remove the no-op comment on headWeight since it's now actually used.
+
+---
+
+ASSISTANT:
+Done — both fixed and relaunched.
+
+**What changed:**
+1. **Vertical pupil tracking restored** on the Apple Vision backend — no longer locked to 0.5.
+2. **MediaPipe slider now works** — the Swift side computes its own fusion from the raw head_yaw, head_pitch, iris_ratio_x, iris_ratio_y that Python sends, using the slider's headWeight value. Python's pre-fused gaze_x/gaze_y is ignored.
+
+Both backends now respect the head/eye balance slider for both axes.
+
+---
+
+On your tracker question — for **pupil-only motion with a still head**, the ranking is:
+
+**OpenFace** is the strongest here. It explicitly fits a 3D eyeball model per eye and estimates a gaze vector for each eye independent of head pose. When the head is still, the gaze vector change comes purely from eyeball rotation, which is exactly what you want.
+
+**L2CS-Net** is appearance-based — it looks at the full face crop to predict gaze angles. It captures pupil movement implicitly, but head pose is a dominant signal in its training data. With a perfectly still head, it will still pick up some pupil signal but it won't be as isolated or sensitive as OpenFace's explicit eye model.
+
+**GazeFollower** is similar to L2CS-Net in that it's appearance-based. Good overall accuracy but doesn't explicitly separate head from eye signals.
+
+So if pure pupil tracking matters most, **OpenFace** is the best of the three. Though honestly, your existing MediaPipe iris ratio tracking is already doing explicit pupil-within-eye measurement — the slider fix means you can now crank the eye weight up and get very responsive pupil-only tracking from either backend.
+
+---
+
+ASSISTANT:
+
+
+
+
+---
+
+ASSISTANT:
+Honestly — **medium difficulty but annoying**. Here's the breakdown:
+
+**The hard part is the build.** OpenFace doesn't have a Homebrew formula and has documented issues on Apple Silicon (M-series). You'd be fighting CMake linker errors around gfortran/OpenBLAS for probably 2-4 hours. The M1 build issue has been open since 2022 with no maintainer response. The project is essentially in maintenance mode.
+
+**The easy part is the integration.** Once the binary exists, the Swift work is almost copy-paste from your MediaPipeBackend — launch it as a subprocess, read data, fuse with your slider weight. OpenFace outputs gaze_angle_x/y (radians, per-eye gaze vectors averaged) and head pose, which maps directly to your existing normalization and fusion pipeline. Maybe a day of actual coding.
+
+**The annoying part is ongoing maintenance.** If Homebrew updates GCC or OpenBLAS, the build could break and you'd be on your own.
+
+**My honest take:** Given that the build is fragile and the project is stale, and that OpenFace's accuracy (9.1 degrees on MPIIGaze) is actually worse than L2CS-Net (3.9 degrees), you'd get more bang for your buck converting **L2CS-Net to CoreML**. That would give you a fully native third backend with no subprocess, no C++ build headaches, no Python dependency, and better accuracy — especially for the pupil-only tracking you care about since it's a learned appearance model that captures subtle eye changes. Want me to explore that path instead?
+
+---
+
+ASSISTANT:
+
+
+
+
+---
+
+ASSISTANT:
+Let me flip the head pose signs on the Apple Vision backend — the yaw/pitch from `VNDetectFaceRectanglesRequest` have opposite sign conventions from what the estimator assumed.
+
+---
+
+ASSISTANT:
+Fixed — flipped both yaw and pitch signs for the Apple Vision backend. The `VNDetectFaceRectanglesRequest` uses opposite sign conventions from OpenCV's solvePnP that the MediaPipe backend uses. Head movement should now track in the correct direction.
+
+Test it and let me know if it feels right. Then I'll start on the L2CS-Net CoreML backend.
+
+---
+
+ASSISTANT:
+
+
+
+
+---
+
+ASSISTANT:
+Several things to tackle. Let me handle them all.
+
+---
+
+ASSISTANT:
+Now I see all four issues clearly. Let me fix them all at once.
+
+**Why raw == calibrated on Apple**: The estimator applies calibration internally and returns one point. The tracker has no access to the pre-calibration value, so it sends the same thing to both callbacks. I need to have the estimator return both.
+
+---
+
+ASSISTANT:
+Now update the tracker to use both points correctly.
+
+---
+
+ASSISTANT:
+Now I also need to fix the calibration manager — it was recording `rawGazePoint` samples from `onRawGazePoint`. Now that raw is truly pre-calibration, calibration should still record the raw point (which is correct — calibration needs uncalibrated data).
+
+Now fix MediaPipe raw display inversion — flip the signs to match the Apple backend.
+
+---
+
+ASSISTANT:
+Now add the L2CS-Net TODO to the session log.
+
+---
+
+ASSISTANT:
+Now handle the iTerm AppleScript authorization. Let me try resetting the TCC permissions.
+
+---
+
+ASSISTANT:
+Good, that worked. Now let me build and relaunch — macOS should prompt you to authorize iTerm access on first AppleScript call.
+
+---
+
+ASSISTANT:
+All done. Here's what changed:
+
+**1. L2CS-Net CoreML backend** — added to the TODO section in SESSION_LOG.md with full details on the conversion path and repos.
+
+**2. iTerm AppleScript auth** — reset the TCC permissions for the app. When eyeTerm tries to talk to iTerm now, macOS should pop up a permission dialog asking you to allow it. Click Allow.
+
+**3. MediaPipe raw data inversion** — flipped both head pose signs in the Swift-side fusion to match reality (same fix we did for Apple Vision).
+
+**4. Raw vs calibrated now different on Apple** — the estimator now returns both a pre-calibration raw point and a post-calibration point separately. The red dot (raw) shows where the uncalibrated gaze lands, the yellow dot (calibrated) shows the corrected position, and cyan (smoothed) shows the filtered version. They'll only differ after you run calibration.
+
+---
+
+ASSISTANT:
+
+
+
+
+---
+
+ASSISTANT:
+Makes total sense — seeing head and pupil signals independently will make it way easier to debug what's working and what's off. Let me add both as separate indicators.
+
+---
+
+ASSISTANT:
+Now I'll add the head and pupil screen-space points to the diagnostics struct, compute them in both backends, wire them to AppState, and render them as SF Symbol icons in the overlay.
+
+---
+
+ASSISTANT:
+Now update MediaPipe backend to include the same in its diagnostics.
+
+---
+
+ASSISTANT:
+Now add the new state properties and wire them in AppCoordinator.
+
+---
+
+ASSISTANT:
+Now update the debug overlay to show head and pupil as SF Symbol icons instead of the old dots.
+
+---
+
+ASSISTANT:
+Done — rebuilt and launched. The debug overlay now shows five separate indicators:
+
+- **Orange person icon** — raw head pose estimation only (where your head orientation says you're looking)
+- **Green eye icon** — raw pupil estimation only (where your iris position says you're looking)
+- **Red dot** — fused raw point (head + pupil combined by the slider weight, pre-calibration)
+- **Yellow dot** — calibrated point (after calibration transform)
+- **Cyan dot + crosshairs** — smoothed final point (what drives the quadrant)
+
+The HUD legend matches with the same icons and labels. This should make it crystal clear what each signal is contributing.
+
+---
+
+To your question about the fusion — yes, that's essentially right. If you imagine the head icon and eye icon as two points on the screen, the fused red dot sits on the line between them, positioned according to the slider weight. At 85% head / 15% eye, the red dot sits 85% of the way toward the head icon. Slide it to 50/50 and the red dot lands at the midpoint. It's a weighted average applied independently to X and Y, which is geometrically the same as interpolating along that line.
+
+---
+
+ASSISTANT:
+
+
+
+
+---
+
+ASSISTANT:
+Done. You'll now see a subtle white line drawn between the green eye icon and the orange head icon, with a small white dot on that line showing exactly where the fusion point falls based on the current slider position. At 85% head weight, the white dot sits close to the head icon. Drag the slider toward eye and it slides toward the green eye. The red fused dot should land right on top of that white dot (they're the same math).
+
+---
+
+ASSISTANT:
+
+
+
+
+---
+
+ASSISTANT:
+Different sign conventions between the two backends and between axes. Let me fix each one precisely.
+
+---
+
+ASSISTANT:
+Fixed. The two backends had different sign conventions per axis:
+
+- **Apple Vision**: flipped yaw back to negative (left/right was inverted), kept pitch positive (up/down was correct)
+- **MediaPipe**: flipped both back to negative (both were inverted)
+
+Check the orange head icon on both backends now — should track correctly in all four directions.
+
+---
+
+ASSISTANT:
+
+
+
+
+---
+
+ASSISTANT:
+It's calibrating the **fused result** — the combined head+pupil point after the slider weight is applied. It doesn't calibrate head and eyes independently. The calibration manager receives the raw fused point (the red dot) and learns an affine transform to correct it against the target positions.
+
+This means calibration can compensate for systematic offset, scaling, and skew in the combined signal, but it can't independently correct head being wrong in one direction while eyes are wrong in another. If you change the head/eye slider after calibrating, the calibration will be off because the fusion balance changed.
+
+Want me to make it calibrate head and pupil separately, or is the current approach working well enough?
+
+---
+
+ASSISTANT:
+MediaPipe is using `irisRatioX` and `irisRatioY` directly in the fusion — they need to be inverted. Apple uses `1.0 - offset` which is already correct.
+
+---
+
+ASSISTANT:
+Also need to update the diagnostics pupilGazePoint to use the inverted values.
+
+---
+
+ASSISTANT:
+Fixed — MediaPipe pupil values are now inverted with `1.0 - irisRatio` for both X and Y, matching what the Apple backend already does. The green eye icon should now track correctly on both backends.
+
+---
+
+ASSISTANT:
+
+
+
+
+---
+
+ASSISTANT:
+That's a much better architecture — calibrate each signal independently, then fuse the calibrated results. Let me read the calibration system first.
+
+---
+
+ASSISTANT:
+Now let me look at how calibration is wired up — what feeds into it and what consumes the result.
+
+---
+
+ASSISTANT:
+This is a solid architectural change. I need to touch several files — calibration manager, both backends, the estimator, the coordinator, and persistence. Let me implement it systematically.
+
+---
+
+ASSISTANT:
+Now update `finishCalibration` and persistence to handle dual transforms.
+
+---
+
+ASSISTANT:
+Now update the backend protocol to use dual calibration transforms.
+
+---
+
+ASSISTANT:
+Now update the Apple Vision estimator to use dual transforms.
+
+---
+
+ASSISTANT:
+Now update the EyeTermTracker to expose the dual transforms.
+
+---
+
+ASSISTANT:
+Now update MediaPipeBackend to use dual transforms.
+
+---
+
+ASSISTANT:
+Now update MediaPipeBackend's processLine to apply calibration per-signal before fusion.
+
+---
+
+ASSISTANT:
+Now update AppCoordinator to feed dual samples to calibration and receive dual transforms back.
+
+---
+
+ASSISTANT:
+Now update the raw gaze callback to feed head and pupil points separately to calibration.
+
+---
+
+ASSISTANT:
+Now feed calibration samples from the diagnostics callback where we have head and pupil points separately.
+
+---
+
+ASSISTANT:
+Now update startCalibration to clear both transforms.
+
+---
+
+ASSISTANT:
+Now let me also remove the old `applyCorrection` method that referenced the single transform, and clean up the old defaults key reference.
+
+---
+
+ASSISTANT:
+Done — rebuilt and launched. Here's what changed:
+
+**Calibration is now fully independent for head and pupil.** During calibration, both the head gaze point and pupil gaze point are recorded separately at each target. Two independent affine transforms are computed — one correcting the head signal, one correcting the pupil signal. Both are persisted to UserDefaults independently.
+
+**Post-calibration, each signal gets its own correction before fusion.** The calibrated head point and calibrated pupil point are then fused using the slider weight. This means you can freely adjust the head/eye balance slider after calibrating without invalidating the calibration — each signal stays corrected regardless of how you blend them.
+
+---
+
+ASSISTANT:
+I need to add calibrated head/pupil points to the diagnostics. Let me trace where they're computed in both backends.
+
+---
+
+ASSISTANT:
+Now update the estimator to include the calibrated values in diagnostics.
+
+---
+
+ASSISTANT:
+Now do the same for MediaPipeBackend.
+
+---
+
