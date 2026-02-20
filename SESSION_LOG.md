@@ -232,6 +232,45 @@ Debug overlay visual fixes: Z-order of fusion circles, hide redundant subtle cir
 
 ---
 
+## Session — 2026-02-20 09:30
+
+### Goal
+Create a `CLAUDE.md` project file summarizing the entire codebase and conversation history, with instructions for the next Claude Code session.
+
+### Accomplished
+- Created `CLAUDE.md` at project root with:
+  - Build & run instructions
+  - Full architecture overview (eye tracking -> voice -> terminal pipeline)
+  - Key files table mapping every important file to its purpose
+  - Settings flow explanation (AppState observation, saveSettingsAsDefaults)
+  - Voice backend comparison (WhisperKit vs whisper.cpp, instanceBusy fix)
+  - Calibration system docs (9-point grid, dual affine, parallax learning)
+  - Condensed recent work summaries (sessions 4-5)
+  - Known issues, GitHub link, future ideas
+  - References SESSION_LOG.md for detailed per-session changelogs
+
+### In Progress / Incomplete
+- Nothing — task was fully completed
+
+### Key Decisions
+- Created CLAUDE.md (picked up by Claude Code automatically) rather than a generic README
+- Referenced SESSION_LOG.md for granular history rather than duplicating it
+- Focused on architecture and "how things work" over changelog details
+
+### Files Changed
+- `CLAUDE.md` — new file, comprehensive project reference
+
+### Known Issues
+- None new
+
+### Running Services
+- None
+
+### Next Steps
+- No pending work. Resume whatever the user wants to work on next.
+
+---
+
 ## TODO — Future Features
 
 ### L2CS-Net CoreML Backend (Third Tracking Backend)
