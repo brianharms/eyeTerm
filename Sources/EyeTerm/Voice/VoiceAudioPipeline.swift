@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreAudio
 
 final class VoiceAudioPipeline {
     var onAudioLevel: ((Float, Bool) -> Void)?
@@ -7,6 +8,7 @@ final class VoiceAudioPipeline {
     var silenceThreshold: Float = 0.01
     var silenceDuration: TimeInterval = 0.5
     var interimInterval: TimeInterval = 1.0
+    var inputDeviceUID: String?   // nil = system default
 
     private(set) var isRunning = false
 
@@ -24,6 +26,27 @@ final class VoiceAudioPipeline {
         }
 
         let engine = AVAudioEngine()
+
+        // Apply non-default input device if requested
+        if let uid = inputDeviceUID, !uid.isEmpty {
+            if let deviceID = Self.audioDeviceID(forUID: uid) {
+                var devID = deviceID
+                let status = AudioUnitSetProperty(
+                    engine.inputNode.audioUnit!,
+                    kAudioOutputUnitProperty_CurrentDevice,
+                    kAudioUnitScope_Global,
+                    0,
+                    &devID,
+                    UInt32(MemoryLayout<AudioDeviceID>.size)
+                )
+                if status != noErr {
+                    print("[VoiceAudioPipeline] Failed to set input device (status \(status)), using default")
+                }
+            } else {
+                print("[VoiceAudioPipeline] Device UID '\(uid)' not found, using default")
+            }
+        }
+
         let inputNode = engine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
 
@@ -147,5 +170,28 @@ final class VoiceAudioPipeline {
         bufferManager.clear()
         guard !audio.isEmpty else { return }
         onSpeechSegmentReady?(audio)
+    }
+
+    // MARK: - CoreAudio Helpers
+
+    private static func audioDeviceID(forUID uid: String) -> AudioDeviceID? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyTranslateUIDToDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var uidCF: CFString = uid as CFString
+        var deviceID: AudioDeviceID = 0
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address,
+            UInt32(MemoryLayout<CFString>.size),
+            &uidCF,
+            &size,
+            &deviceID
+        )
+        guard status == noErr, deviceID != 0 else { return nil }
+        return deviceID
     }
 }

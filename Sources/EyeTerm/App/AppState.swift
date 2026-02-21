@@ -23,6 +23,7 @@ final class AppState {
     var focusedQuadrant: ScreenQuadrant?
     var preferredTerminal: PreferredTerminal = .iTerm2
     var terminalLaunchCommand: String = "claude --dangerously-skip-permissions"
+    var terminalSetupMode: TerminalSetupMode = .adoptExisting
 
     // MARK: - Dwell Progress
     var dwellingQuadrant: ScreenQuadrant?
@@ -45,6 +46,8 @@ final class AppState {
     var overlayMode: OverlayMode = .off
     var debugSmoothing: Double = 0.15
     var micSensitivity: Double = 0.01
+    var selectedMicDeviceUID: String = ""   // empty = system default
+    var availableMics: [(uid: String, name: String)] = []
     var overlayIconSize: Double = 1.0
     var fusionDotSize: Double = 6.0
     var smoothedCircleSize: Double = 12.0
@@ -56,6 +59,25 @@ final class AppState {
     var debugLineWidth: Double = 1.0
     var subtleEyeSize: Double = 20.0
     var subtleEyeOpacity: Double = 0.25
+
+    // MARK: - Window Actions
+    var windowActionsEnabled: Bool = true
+
+    // MARK: - Blink Gestures
+    var blinkGesturesEnabled: Bool = true
+    var winkClosedThreshold: Double = 0.15
+    var winkOpenThreshold: Double = 0.25
+    var leftWinkAction: WinkAction = .doubleEscape
+    var rightWinkAction: WinkAction = .enter
+    var minWinkDuration: Double = 0.2
+    var maxWinkDuration: Double = 0.5
+    var bilateralRejectWindow: Double = 0.1
+    var winkCooldown: Double = 0.8
+
+    // MARK: - Blink Gesture Diagnostics (not persisted)
+    var leftEyeAperture: Double = 0
+    var rightEyeAperture: Double = 0
+    var lastWinkEvent: WinkEvent?
 
     // MARK: - Transcription History
     var partialTranscription: String = ""
@@ -115,6 +137,7 @@ final class AppState {
             "overlayMode": overlayMode.rawValue,
             "debugSmoothing": debugSmoothing,
             "micSensitivity": micSensitivity,
+            "selectedMicDeviceUID": selectedMicDeviceUID,
             "overlayIconSize": overlayIconSize,
             "fusionDotSize": fusionDotSize,
             "smoothedCircleSize": smoothedCircleSize,
@@ -128,6 +151,17 @@ final class AppState {
             "debugLineWidth": debugLineWidth,
             "preferredTerminal": preferredTerminal.rawValue,
             "terminalLaunchCommand": terminalLaunchCommand,
+            "blinkGesturesEnabled": blinkGesturesEnabled,
+            "winkClosedThreshold": winkClosedThreshold,
+            "winkOpenThreshold": winkOpenThreshold,
+            "leftWinkAction": leftWinkAction.rawValue,
+            "rightWinkAction": rightWinkAction.rawValue,
+            "minWinkDuration": minWinkDuration,
+            "maxWinkDuration": maxWinkDuration,
+            "bilateralRejectWindow": bilateralRejectWindow,
+            "winkCooldown": winkCooldown,
+            "windowActionsEnabled": windowActionsEnabled,
+            "terminalSetupMode": terminalSetupMode.rawValue,
         ]
 
         guard let data = try? JSONSerialization.data(withJSONObject: settings, options: [.prettyPrinted, .sortedKeys]) else { return }
@@ -135,4 +169,36 @@ final class AppState {
         let url = URL(fileURLWithPath: "/Users/brianharms/Desktop/Claude Projects/eyeTerm/Sources/EyeTerm/saved-defaults.json")
         try? data.write(to: url)
     }
+}
+
+enum WinkAction: String, CaseIterable, Identifiable {
+    case doubleEscape = "Double Escape"
+    case enter = "Enter"
+    case singleEscape = "Escape"
+    case none = "None"
+
+    var id: String { rawValue }
+
+    var shortLabel: String {
+        switch self {
+        case .doubleEscape: return "Esc Esc"
+        case .enter: return "Enter"
+        case .singleEscape: return "Esc"
+        case .none: return "None"
+        }
+    }
+}
+
+enum TerminalSetupMode: String, CaseIterable, Identifiable {
+    case launchNew = "Create New"
+    case adoptExisting = "Use Existing"
+
+    var id: String { rawValue }
+}
+
+struct WinkEvent {
+    enum Side { case left, right }
+    let side: Side
+    let action: WinkAction
+    let timestamp: Date
 }

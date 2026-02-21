@@ -31,6 +31,17 @@ struct MenuBarView: View {
                         .foregroundStyle(.green)
                         .font(.caption2)
                 }
+                Spacer()
+                if !(appState.isEyeTrackingActive && appState.isVoiceActive && appState.isTerminalSetup) {
+                    Button {
+                        Task { await coordinator.startAll() }
+                    } label: {
+                        Label("Launch All", systemImage: "bolt.fill")
+                    }
+                    .buttonStyle(CompactMenuButtonStyle())
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                }
             }
 
             // ── Eye Tracking ──
@@ -95,15 +106,23 @@ struct MenuBarView: View {
             // ── Terminal ──
             sectionHeader("TERMINAL")
 
-            Button {
-                Task { await coordinator.setupTerminals() }
-            } label: {
-                Label("Launch Terminals", systemImage: "terminal")
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 1) {
+                terminalModeButton(.adoptExisting, label: "Use Existing")
+                terminalModeButton(.launchNew, label: "Create New Terminals")
             }
-            .buttonStyle(.borderless)
-            .controlSize(.mini)
             .font(.caption)
+
+            if appState.terminalSetupMode == .launchNew {
+                Button {
+                    Task { await coordinator.setupTerminals() }
+                } label: {
+                    Label("Launch Terminals", systemImage: "bolt.fill")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.mini)
+                .font(.caption)
+            }
 
             // ── Utilities ──
             Divider()
@@ -180,6 +199,21 @@ struct MenuBarView: View {
     }
 
     // MARK: - Helpers
+
+    private func terminalModeButton(_ mode: TerminalSetupMode, label: String) -> some View {
+        Button {
+            appState.terminalSetupMode = mode
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: appState.terminalSetupMode == mode ? "checkmark" : "")
+                    .font(.system(size: 9, weight: .bold))
+                    .frame(width: 10)
+                Text(label)
+            }
+            .foregroundStyle(appState.terminalSetupMode == mode ? .primary : .secondary)
+        }
+        .buttonStyle(CompactMenuButtonStyle())
+    }
 
     private var overlayIcon: String {
         switch appState.overlayMode {

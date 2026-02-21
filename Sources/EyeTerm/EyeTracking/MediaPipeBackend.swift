@@ -316,14 +316,19 @@ final class MediaPipeBackend: EyeTrackingBackend {
             return CGPoint(x: pt[0], y: 1 - pt[1])
         }
 
+        let leftPts = convertPoints("left_eye_points")
+        let rightPts = convertPoints("right_eye_points")
+
         return FaceObservationData(
             boundingBox: bboxRect,
-            leftEyePoints: convertPoints("left_eye_points"),
-            rightEyePoints: convertPoints("right_eye_points"),
+            leftEyePoints: leftPts,
+            rightEyePoints: rightPts,
             leftPupilCenter: convertPupil("left_pupil"),
             rightPupilCenter: convertPupil("right_pupil"),
             yaw: json["head_yaw"] as? Double,
-            pitch: json["head_pitch"] as? Double
+            pitch: json["head_pitch"] as? Double,
+            leftEyeAperture: FaceObservationData.eyeApertureRatio(leftPts),
+            rightEyeAperture: FaceObservationData.eyeApertureRatio(rightPts)
         )
     }
 }

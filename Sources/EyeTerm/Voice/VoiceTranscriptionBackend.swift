@@ -15,6 +15,7 @@ protocol VoiceTranscriptionBackend: AnyObject {
     var onModelState: ((VoiceModelState) -> Void)? { get set }
     var modelName: String { get set }
     var silenceThreshold: Float { get set }
+    var inputDeviceUID: String? { get set }
     func start() async throws
     func stop()
 }

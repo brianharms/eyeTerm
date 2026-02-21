@@ -27,6 +27,7 @@
 		61101B09FC72E11761BEA97E /* WalkthroughPermissionStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = E191C142576D26F474052C9A /* WalkthroughPermissionStep.swift */; };
 		61B0CA91C019C9FA263C7934 /* DwellTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9AA2CDC1E27588BD0C577F1 /* DwellTimer.swift */; };
 		7855E577DD5F72BC3447D8FB /* WhisperCppBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22AB2B33B94D0C90352E7773 /* WhisperCppBackend.swift */; };
+		878D4C13CA36B4F2DEAC543A /* saved-defaults.json in Resources */ = {isa = PBXBuildFile; fileRef = A4877E19FED1F5693E7DA064 /* saved-defaults.json */; };
 		8B4FE7D9C0076E5FDAA48FD6 /* VoiceTranscriptionBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00EE7448FBA6327EEFAA1E10 /* VoiceTranscriptionBackend.swift */; };
 		95800E445E4B14218E51EB80 /* CalibrationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19196893580AA6C45479E3A0 /* CalibrationManager.swift */; };
 		99C3F6ED34279E30E736CD46 /* AppCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 387B6DDEA397FF964D2B3CEE /* AppCoordinator.swift */; };
@@ -37,12 +38,14 @@
 		ABC57BB39E19C1A5E5409759 /* WalkthroughReadyStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8C24F3C61BF2B31B7D6F653 /* WalkthroughReadyStep.swift */; };
 		B19FD69739FF4A21172DF214 /* MediaPipeBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D705FB322AA5DF51AFB5CA3 /* MediaPipeBackend.swift */; };
 		B2548DFF60D29E9704F8A6CE /* Permissions.swift in Sources */ = {isa = PBXBuildFile; fileRef = D836DDC377E4359724D747C5 /* Permissions.swift */; };
+		BA23CA32F38A27DEE5639D95 /* WindowActionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B633A8E5AD8A95181449A1B /* WindowActionManager.swift */; };
 		BF348EBC6AE10B85D65E479E /* ErrorDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84D4C0776BA6D90F9E7C7F2C /* ErrorDetailView.swift */; };
 		C15FDDDFF3EDBD4BBAA0635E /* SwiftWhisper in Frameworks */ = {isa = PBXBuildFile; productRef = 0DCCF65CD019DAFBC4DBB158 /* SwiftWhisper */; };
 		C6E168E849B551396511F6C3 /* StreamingTranscriptionDiffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F4F4D8AEC89DDDF0B0772DE /* StreamingTranscriptionDiffer.swift */; };
 		CE3ED8147CA8DEA41745A75E /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BBE99F9725303AD3EC8AB2A /* MenuBarView.swift */; };
 		CE53C8E9B52C4D729A52A315 /* WhisperKitBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD3A01A725DCC7A316BC28D4 /* WhisperKitBackend.swift */; };
 		D4016E893CB6B64D9E7CE9B0 /* EyeOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96D586726F5F1F38E47FC288 /* EyeOverlayView.swift */; };
+		D9AA8D9A19AF8CAC86031F80 /* BlinkGestureDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 371B7436B6CD4BA712BE89D2 /* BlinkGestureDetector.swift */; };
 		DC9159E94663C33CB6413AA7 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7660980D3A8CB84F2FA144DA /* SettingsView.swift */; };
 		E016B8E34F49CBCC540B2C27 /* WalkthroughHowItWorksStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89796F11358BB87E1B29862A /* WalkthroughHowItWorksStep.swift */; };
 		EDAEC8CB8EDF530ED3FB7699 /* TerminalManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F17B4A714094626A952C193 /* TerminalManager.swift */; };
@@ -61,7 +64,9 @@
 		1BBE99F9725303AD3EC8AB2A /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 		22AB2B33B94D0C90352E7773 /* WhisperCppBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhisperCppBackend.swift; sourceTree = "<group>"; };
 		36C77FE88B193AE70C02A462 /* WalkthroughWelcomeStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkthroughWelcomeStep.swift; sourceTree = "<group>"; };
+		371B7436B6CD4BA712BE89D2 /* BlinkGestureDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlinkGestureDetector.swift; sourceTree = "<group>"; };
 		387B6DDEA397FF964D2B3CEE /* AppCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCoordinator.swift; sourceTree = "<group>"; };
+		3B633A8E5AD8A95181449A1B /* WindowActionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowActionManager.swift; sourceTree = "<group>"; };
 		3DB97887933E2FBE0F8D931C /* eyeTerm.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = eyeTerm.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3F4F4D8AEC89DDDF0B0772DE /* StreamingTranscriptionDiffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingTranscriptionDiffer.swift; sourceTree = "<group>"; };
 		55764B0C11E733EF0C9B98B6 /* StatusIndicatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusIndicatorView.swift; sourceTree = "<group>"; };
@@ -81,6 +86,7 @@
 		96D586726F5F1F38E47FC288 /* EyeOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EyeOverlayView.swift; sourceTree = "<group>"; };
 		9F17B4A714094626A952C193 /* TerminalManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalManager.swift; sourceTree = "<group>"; };
 		A05FD792E7E2FE9ABDCF9EB8 /* OverlayMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayMode.swift; sourceTree = "<group>"; };
+		A4877E19FED1F5693E7DA064 /* saved-defaults.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "saved-defaults.json"; sourceTree = "<group>"; };
 		ADEDE3E5AF77B48EC6E6DE63 /* AudioBufferManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioBufferManager.swift; sourceTree = "<group>"; };
 		BD3A01A725DCC7A316BC28D4 /* WhisperKitBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhisperKitBackend.swift; sourceTree = "<group>"; };
 		C2AFF30A1E2AD4B9D4E783E7 /* OnboardingState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingState.swift; sourceTree = "<group>"; };
@@ -178,6 +184,7 @@
 		783FFE2149926AD26CAE5ECA /* EyeTerm */ = {
 			isa = PBXGroup;
 			children = (
+				A4877E19FED1F5693E7DA064 /* saved-defaults.json */,
 				452D204BB1BAD5F14E65E236 /* App */,
 				EA4338C24EEAA3AEC285D687 /* EyeTracking */,
 				E53D200177C075FFF03A7032 /* Resources */,
@@ -240,8 +247,10 @@
 		ED78BCD1298B07D87B79FAB4 /* Utilities */ = {
 			isa = PBXGroup;
 			children = (
+				371B7436B6CD4BA712BE89D2 /* BlinkGestureDetector.swift */,
 				C9AA2CDC1E27588BD0C577F1 /* DwellTimer.swift */,
 				D836DDC377E4359724D747C5 /* Permissions.swift */,
+				3B633A8E5AD8A95181449A1B /* WindowActionManager.swift */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -310,6 +319,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				29078136543F963FBB2A12C2 /* Assets.xcassets in Resources */,
+				878D4C13CA36B4F2DEAC543A /* saved-defaults.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -364,6 +374,7 @@
 				53A68692C07345061460CEB0 /* AppleScriptBridge.swift in Sources */,
 				21DB4BE7C28F9521BDB1E7DE /* AudioBufferManager.swift in Sources */,
 				A55AB41834993D832BA303B3 /* AudioWaveformView.swift in Sources */,
+				D9AA8D9A19AF8CAC86031F80 /* BlinkGestureDetector.swift in Sources */,
 				95800E445E4B14218E51EB80 /* CalibrationManager.swift in Sources */,
 				EDED3F181DAA8FD4358698EB /* CalibrationOverlayView.swift in Sources */,
 				3C2FE42D6743B816F6A3926F /* CameraPreviewView.swift in Sources */,
@@ -398,6 +409,7 @@
 				7855E577DD5F72BC3447D8FB /* WhisperCppBackend.swift in Sources */,
 				3CCAABE240B25BB15337D60B /* WhisperCppModelManager.swift in Sources */,
 				CE53C8E9B52C4D729A52A315 /* WhisperKitBackend.swift in Sources */,
+				BA23CA32F38A27DEE5639D95 /* WindowActionManager.swift in Sources */,
 				A07944F32FE891DC7315DFC7 /* WindowLayout.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -10,6 +10,10 @@ final class WhisperCppBackend: VoiceTranscriptionBackend {
     var silenceThreshold: Float = 0.01 {
         didSet { pipeline.silenceThreshold = silenceThreshold }
     }
+    var inputDeviceUID: String? {
+        get { pipeline.inputDeviceUID }
+        set { pipeline.inputDeviceUID = newValue }
+    }
 
     private(set) var isRunning = false
 

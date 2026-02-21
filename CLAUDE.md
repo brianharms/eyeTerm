@@ -45,8 +45,10 @@ Project uses XcodeGen (`project.yml`) but the `.xcodeproj` is already generated 
 | **Voice** | `Sources/EyeTerm/Voice/WhisperKitBackend.swift` | Primary voice backend — CoreML/Neural Engine, fast |
 | **Voice** | `Sources/EyeTerm/Voice/WhisperCppBackend.swift` | Alternate voice backend — CPU-only, 5-10s latency with small.en |
 | **Voice** | `Sources/EyeTerm/Voice/VoiceAudioPipeline.swift` | Shared audio capture + VAD (voice activity detection). RMS threshold, 0.5s silence = segment ready |
-| **Voice** | `Sources/EyeTerm/Voice/CommandParser.swift` | Strips bracket artifacts `[...]` `(...)`, applies text normalizations ("at sign" -> "@"), detects execute keyword |
-| **Terminal** | `Sources/EyeTerm/Terminal/TerminalManager.swift` | AppleScript bridge to iTerm2/Terminal.app. Position-based window lookup for focus |
+| **Voice** | `Sources/EyeTerm/Voice/CommandParser.swift` | Strips bracket artifacts `[...]` `(...)`, applies text normalizations ("at sign" -> "@"), detects execute keyword, detects window action phrases |
+| **Window Actions** | `Sources/EyeTerm/Utilities/WindowActionManager.swift` | AppleScript-based non-terminal window manipulation (close, minimize, hide, go back/forward, reload) with terminal protection |
+| **Blink Gestures** | `Sources/EyeTerm/Utilities/BlinkGestureDetector.swift` | Detects deliberate one-eye winks for terminal actions (escape, enter). Filters blinks via bilateral reject, duration bounds, cooldown |
+| **Terminal** | `Sources/EyeTerm/Terminal/TerminalManager.swift` | AppleScript bridge to iTerm2/Terminal.app. Position-based window lookup for focus. Supports launch (create new) and adopt (use existing) modes |
 | **UI** | `Sources/EyeTerm/UI/SettingsView.swift` | Main settings panel (eye tracking, voice, terminal, visualization) |
 | **UI** | `Sources/EyeTerm/UI/GazeOverlayView.swift` | Full-screen transparent overlay showing gaze points, calibration dots, dwell progress |
 | **UI** | `Sources/EyeTerm/UI/AudioWaveformView.swift` | Floating waveform pill showing mic input levels |
@@ -68,12 +70,19 @@ Settings live as properties on `AppState` (an `@Observable` class). `AppCoordina
 
 ## Recent Work (Feb 2026)
 
-### Session 5 — Feb 20
+### Session 7 — Feb 21
+- **Voice-controlled window management**: Say "close it", "minimize", "hide", "go back", "go forward", "reload" to act on non-terminal windows. Terminal windows (iTerm2/Terminal.app) are protected — phrases pass through as text when terminal is frontmost. Refocuses terminal quadrant after action.
+- **Wink gestures**: Deliberate one-eye winks trigger terminal actions (left wink = double escape, right wink = enter). Bilateral reject window filters natural blinks. Configurable thresholds, durations, cooldowns in Settings.
+- **Terminal setup modes**: Two-mode workflow — "Use Existing" (default) adopts already-positioned terminal windows by scanning screen quadrants, "Create New Terminals" launches four new windows. Checkmark selection in menu bar dropdown.
+- **Mic device picker**: Select input microphone in Settings, with CoreAudio device change listener for hot-plug support.
+- **Onboarding walkthrough**: First-run overlay explaining eye tracking, voice, and terminal setup.
+
+### Session 6 — Feb 20
 - **WhisperCpp race condition fix**: `instanceBusy` error from concurrent `whisper_full()` calls. Serialized with single `activeWhisperTask` that awaits previous task before calling `whisper.transcribe()`
 - **Transcription diagnostics**: Settings log now shows Raw and Send (cleaned) text per transcription, with color-coded labels. Helps verify bracket filtering and text normalization
 - **Waveform improvements**: Bars thinned (4pt -> 2pt), power curve `pow(linear, 0.4)` for low-volume visibility, pill widened 30% (21 -> 27 bars)
 
-### Session 4 — Feb 19
+### Session 5 — Feb 19
 - **Head-compensated pupil tracking**: Parallax correction removes head-rotation artifacts from pupil signal. Head amplification stretches small head movements.
 - **9-point calibration**: Expanded from 5 points. Wider targets at 0.05/0.95 for better edge coverage. Auto-learns parallax coefficients.
 - **Settings save/load**: `saveSettingsAsDefaults()` writes JSON for baking into next build

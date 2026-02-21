@@ -4,6 +4,8 @@ struct SettingsView: View {
     @Environment(AppState.self) private var appState
     @Environment(AppCoordinator.self) private var coordinator
 
+    @State private var showDescriptions = false
+
     private let whisperModels = ["tiny.en", "base.en", "small.en", "medium.en"]
     private let keywordPresets = ["run it", "go ahead", "do it"]
 
@@ -11,6 +13,19 @@ struct SettingsView: View {
         @Bindable var state = appState
 
         Form {
+            Section {
+                Button {
+                    Task { await coordinator.startAll() }
+                } label: {
+                    Label("Launch All", systemImage: "bolt.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .controlSize(.large)
+                .disabled(state.isEyeTrackingActive && state.isVoiceActive && state.isTerminalSetup)
+
+                Toggle("Show Setting Descriptions", isOn: $showDescriptions)
+            }
+
             Section("Eye Tracking") {
                 HStack {
                     Button {
@@ -34,175 +49,205 @@ struct SettingsView: View {
                     .disabled(!state.isEyeTrackingActive)
                 }
 
-                Picker("Tracking Engine", selection: $state.trackingBackend) {
-                    ForEach(TrackingBackend.allCases) { backend in
-                        Text(backend.rawValue).tag(backend)
+                described("Apple Vision uses the built-in Vision framework. MediaPipe uses a Python subprocess for face mesh tracking.") {
+                    Picker("Tracking Engine", selection: $state.trackingBackend) {
+                        ForEach(TrackingBackend.allCases) { backend in
+                            Text(backend.rawValue).tag(backend)
+                        }
                     }
-                }
-                .onChange(of: state.trackingBackend) { _, newValue in
-                    coordinator.switchBackend(to: newValue)
-                }
-
-                LabeledContent("Dwell Time") {
-                    HStack {
-                        Slider(value: $state.dwellTimeThreshold, in: 0.3...3.0, step: 0.1)
-                        Text("\(state.dwellTimeThreshold, specifier: "%.1f")s")
-                            .monospacedDigit()
-                            .frame(width: 36, alignment: .trailing)
+                    .onChange(of: state.trackingBackend) { _, newValue in
+                        coordinator.switchBackend(to: newValue)
                     }
                 }
 
-                LabeledContent("Hysteresis") {
-                    HStack {
-                        Slider(value: $state.hysteresisDelay, in: 0.1...1.0, step: 0.05)
-                        Text("\(state.hysteresisDelay, specifier: "%.2f")s")
-                            .monospacedDigit()
-                            .frame(width: 42, alignment: .trailing)
+                described("How long you must look at a quadrant before it focuses. Shorter = faster, longer = fewer accidental switches.") {
+                    LabeledContent("Dwell Time") {
+                        HStack {
+                            Slider(value: $state.dwellTimeThreshold, in: 0.3...3.0, step: 0.1)
+                            Text("\(state.dwellTimeThreshold, specifier: "%.1f")s")
+                                .monospacedDigit()
+                                .frame(width: 36, alignment: .trailing)
+                        }
                     }
                 }
 
-                LabeledContent("Smoothing") {
-                    HStack {
-                        Text("Smooth")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        Slider(value: $state.eyeSmoothing, in: 0.05...1.0, step: 0.05)
-                        Text("Responsive")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                described("Grace period before the dwell timer resets when your gaze briefly leaves a quadrant. Prevents resets from jitter.") {
+                    LabeledContent("Hysteresis") {
+                        HStack {
+                            Slider(value: $state.hysteresisDelay, in: 0.1...1.0, step: 0.05)
+                            Text("\(state.hysteresisDelay, specifier: "%.2f")s")
+                                .monospacedDigit()
+                                .frame(width: 42, alignment: .trailing)
+                        }
                     }
                 }
 
-                LabeledContent("Head / Eye Balance") {
-                    HStack {
-                        Text("Eye")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        Slider(value: $state.headWeight, in: 0.0...1.0, step: 0.05)
-                        Text("Head")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                described("Smoothing filter on the final gaze point. More smoothing = stable but laggy, more responsive = jittery but instant.") {
+                    LabeledContent("Smoothing") {
+                        HStack {
+                            Text("Smooth")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Slider(value: $state.eyeSmoothing, in: 0.05...1.0, step: 0.05)
+                            Text("Responsive")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
 
-                LabeledContent("Vertical Sensitivity") {
-                    HStack {
-                        Text("Narrow")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        Slider(value: $state.headPitchSensitivity, in: 0.1...2.0, step: 0.05)
-                        Text("Wide")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                described("How much head pose vs. pupil position drives the gaze estimate. Head is stable; pupil is precise but noisier.") {
+                    LabeledContent("Head / Eye Balance") {
+                        HStack {
+                            Text("Eye")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Slider(value: $state.headWeight, in: 0.0...1.0, step: 0.05)
+                            Text("Head")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
 
-                LabeledContent("Head Amplification") {
-                    HStack {
-                        Text("None")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        Slider(value: $state.headAmplification, in: 1.0...10.0, step: 0.5)
-                        Text("Strong")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                described("Scales vertical head pitch. Increase if gaze doesn't reach the top or bottom of your screen.") {
+                    LabeledContent("Vertical Sensitivity") {
+                        HStack {
+                            Text("Narrow")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Slider(value: $state.headPitchSensitivity, in: 0.1...2.0, step: 0.05)
+                            Text("Wide")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                described("Multiplier for head movements. Higher = small head turns cover more screen. Useful for subtle movements.") {
+                    LabeledContent("Head Amplification") {
+                        HStack {
+                            Text("None")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Slider(value: $state.headAmplification, in: 1.0...10.0, step: 0.5)
+                            Text("Strong")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
 
             }
 
             Section("Eye-Tracking Visualization") {
-                LabeledContent("Overlay") {
-                    Picker("", selection: $state.overlayMode) {
-                        ForEach(OverlayMode.allCases) { mode in
-                            Text(mode.displayName).tag(mode)
+                described("Off = hidden. Subtle = small gaze dot. Debug = full diagnostic view with raw, calibrated, and smoothed points.") {
+                    LabeledContent("Overlay") {
+                        Picker("", selection: $state.overlayMode) {
+                            ForEach(OverlayMode.allCases) { mode in
+                                Text(mode.displayName).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                    }
+                }
+
+                described("Smoothing on debug overlay dots only. Doesn't affect actual tracking — just makes debug dots easier to read.") {
+                    LabeledContent("Debug Smoothing") {
+                        HStack {
+                            Text("Smooth")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Slider(value: $state.debugSmoothing, in: 0.05...1.0, step: 0.05)
+                            Text("Raw")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
                         }
                     }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
                 }
 
-                LabeledContent("Debug Smoothing") {
-                    HStack {
-                        Text("Smooth")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        Slider(value: $state.debugSmoothing, in: 0.05...1.0, step: 0.05)
-                        Text("Raw")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                described("Stroke width of lines and borders in the debug overlay.") {
+                    LabeledContent("Debug Line Width") {
+                        HStack {
+                            Text("Thin")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Slider(value: $state.debugLineWidth, in: 0.5...5.0, step: 0.5)
+                            Text("Thick")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
 
-                LabeledContent("Debug Line Width") {
-                    HStack {
-                        Text("Thin")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        Slider(value: $state.debugLineWidth, in: 0.5...5.0, step: 0.5)
-                        Text("Thick")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                described("Size of the head and pupil icons in the debug overlay.") {
+                    LabeledContent("Icon Size") {
+                        HStack {
+                            Text("Small")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Slider(value: $state.overlayIconSize, in: 0.5...2.5, step: 0.1)
+                            Text("Large")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
 
-                LabeledContent("Icon Size") {
-                    HStack {
-                        Text("Small")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        Slider(value: $state.overlayIconSize, in: 0.5...2.5, step: 0.1)
-                        Text("Large")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                described("Size of the fused gaze dot — the blended head+pupil signal before smoothing.") {
+                    LabeledContent("Fusion Dot Size") {
+                        HStack {
+                            Text("Small")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Slider(value: $state.fusionDotSize, in: 3.0...48.0, step: 1.0)
+                            Text("Large")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
 
-                LabeledContent("Fusion Dot Size") {
-                    HStack {
-                        Text("Small")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        Slider(value: $state.fusionDotSize, in: 3.0...48.0, step: 1.0)
-                        Text("Large")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                described("Size of the final smoothed gaze circle — where the system thinks you're looking.") {
+                    LabeledContent("Smoothed Circle Size") {
+                        HStack {
+                            Text("Small")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Slider(value: $state.smoothedCircleSize, in: 3.0...48.0, step: 1.0)
+                            Text("Large")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
 
-                LabeledContent("Smoothed Circle Size") {
-                    HStack {
-                        Text("Small")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        Slider(value: $state.smoothedCircleSize, in: 3.0...48.0, step: 1.0)
-                        Text("Large")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                described("Size of the gaze indicator in Subtle mode. A small dot that follows your gaze.") {
+                    LabeledContent("Subtle Eye Size") {
+                        HStack {
+                            Text("Small")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Slider(value: $state.subtleEyeSize, in: 5.0...100.0, step: 1.0)
+                            Text("Large")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
 
-                LabeledContent("Subtle Eye Size") {
-                    HStack {
-                        Text("Small")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        Slider(value: $state.subtleEyeSize, in: 5.0...100.0, step: 1.0)
-                        Text("Large")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                LabeledContent("Subtle Eye Opacity") {
-                    HStack {
-                        Text("Faint")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        Slider(value: $state.subtleEyeOpacity, in: 0.05...1.0, step: 0.05)
-                        Text("Solid")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                described("Transparency of the Subtle mode gaze dot. Lower = less distracting.") {
+                    LabeledContent("Subtle Eye Opacity") {
+                        HStack {
+                            Text("Faint")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Slider(value: $state.subtleEyeOpacity, in: 0.05...1.0, step: 0.05)
+                            Text("Solid")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
 
@@ -240,10 +285,15 @@ struct SettingsView: View {
                             ])
                         }
                     }
+                    settingHint("Toggle debug overlay layers. Red = raw, Green = calibrated, Blue = smoothed (final).")
                 }
 
-                Toggle("Quadrant Highlighting", isOn: $state.showQuadrantHighlighting)
-                Toggle("Active / Loading State", isOn: $state.showActiveState)
+                described("Show a colored border around the focused quadrant in the overlay.") {
+                    Toggle("Quadrant Highlighting", isOn: $state.showQuadrantHighlighting)
+                }
+                described("Show a visual indicator when eye tracking is active or loading.") {
+                    Toggle("Active / Loading State", isOn: $state.showActiveState)
+                }
             }
 
             Section("Voice") {
@@ -258,61 +308,200 @@ struct SettingsView: View {
                           systemImage: state.isVoiceActive ? "mic.slash" : "mic")
                 }
 
-                Picker("Voice Engine", selection: $state.voiceBackend) {
-                    ForEach(VoiceBackend.allCases) { backend in
-                        Text(backend.rawValue).tag(backend)
+                described("WhisperKit uses CoreML + Neural Engine (fast). whisper.cpp is CPU-only (slower, no framework deps).") {
+                    Picker("Voice Engine", selection: $state.voiceBackend) {
+                        ForEach(VoiceBackend.allCases) { backend in
+                            Text(backend.rawValue).tag(backend)
+                        }
                     }
-                }
-                .onChange(of: state.voiceBackend) { _, newValue in
-                    coordinator.switchVoiceBackend(to: newValue)
-                }
-
-                Picker("Whisper Model", selection: $state.whisperModel) {
-                    ForEach(whisperModels, id: \.self) { model in
-                        Text(model).tag(model)
+                    .onChange(of: state.voiceBackend) { _, newValue in
+                        coordinator.switchVoiceBackend(to: newValue)
                     }
                 }
 
-                LabeledContent("Execute Keyword") {
-                    VStack(alignment: .trailing, spacing: 4) {
-                        Picker("", selection: Binding(
-                            get: {
-                                keywordPresets.contains(state.executeKeyword) ? state.executeKeyword : "__custom__"
-                            },
-                            set: { newValue in
-                                if newValue != "__custom__" {
-                                    state.executeKeyword = newValue
+                described("Which microphone to capture from. System Default uses whatever macOS has selected.") {
+                    Picker("Microphone", selection: $state.selectedMicDeviceUID) {
+                        Text("System Default").tag("")
+                        ForEach(state.availableMics, id: \.uid) { mic in
+                            Text(mic.name).tag(mic.uid)
+                        }
+                    }
+                }
+
+                described("Larger models are more accurate but slower and use more memory. small.en is a good balance.") {
+                    Picker("Whisper Model", selection: $state.whisperModel) {
+                        ForEach(whisperModels, id: \.self) { model in
+                            Text(model).tag(model)
+                        }
+                    }
+                }
+
+                described("Say this phrase to send text to the terminal and press Enter. The keyword is stripped from output.") {
+                    LabeledContent("Execute Keyword") {
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Picker("", selection: Binding(
+                                get: {
+                                    keywordPresets.contains(state.executeKeyword) ? state.executeKeyword : "__custom__"
+                                },
+                                set: { newValue in
+                                    if newValue != "__custom__" {
+                                        state.executeKeyword = newValue
+                                    }
                                 }
+                            )) {
+                                ForEach(keywordPresets, id: \.self) { preset in
+                                    Text("\"\(preset)\"").tag(preset)
+                                }
+                                Text("Custom...").tag("__custom__")
                             }
-                        )) {
-                            ForEach(keywordPresets, id: \.self) { preset in
-                                Text("\"\(preset)\"").tag(preset)
-                            }
-                            Text("Custom...").tag("__custom__")
-                        }
-                        .labelsHidden()
+                            .labelsHidden()
 
-                        if !keywordPresets.contains(state.executeKeyword) {
-                            TextField("Custom keyword", text: $state.executeKeyword)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 160)
+                            if !keywordPresets.contains(state.executeKeyword) {
+                                TextField("Custom keyword", text: $state.executeKeyword)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 160)
+                            }
                         }
                     }
                 }
 
-                LabeledContent("Mic Sensitivity") {
-                    HStack {
-                        Text("Sensitive")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        Slider(value: $state.micSensitivity, in: 0.001...0.05)
-                        Text("Less sensitive")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                described("Voice activity detection threshold. Lower = picks up quieter speech but also more background noise.") {
+                    LabeledContent("Mic Sensitivity") {
+                        HStack {
+                            Text("Sensitive")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Slider(value: $state.micSensitivity, in: 0.001...0.05)
+                            Text("Less sensitive")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
 
-                Toggle("Text Normalization", isOn: $state.enableTextNormalization)
+                described("Convert spoken forms to typed equivalents: \"at sign\" \u{2192} @, \"hashtag\" \u{2192} #, \"new line\" \u{2192} newline.") {
+                    Toggle("Text Normalization", isOn: $state.enableTextNormalization)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Toggle("Window Voice Actions", isOn: $state.windowActionsEnabled)
+                    if showDescriptions {
+                        Text("Dismiss non-terminal windows by voice. Never acts on iTerm2 or Terminal.app.")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                        VStack(alignment: .leading, spacing: 3) {
+                            windowPhraseRow("Close", phrases: "close it · close window · dismiss")
+                            windowPhraseRow("Minimize", phrases: "minimize · minimize it")
+                            windowPhraseRow("Hide", phrases: "hide · hide it · hide the window")
+                            windowPhraseRow("Back", phrases: "go back · back  (\u{2318}[)")
+                            windowPhraseRow("Forward", phrases: "go forward · forward  (\u{2318}])")
+                            windowPhraseRow("Reload", phrases: "reload · refresh  (\u{2318}R)")
+                        }
+                        .padding(.top, 2)
+                    }
+                }
+            }
+
+            Section("Wink Gestures") {
+                described("Detect deliberate one-eye winks to trigger terminal actions. Normal blinks are filtered out.") {
+                    Toggle("Enable Wink Gestures", isOn: $state.blinkGesturesEnabled)
+                }
+
+                described("Action sent to the focused terminal when you close your left eye.") {
+                    Picker("Left Wink", selection: $state.leftWinkAction) {
+                        ForEach(WinkAction.allCases) { action in
+                            Text(action.rawValue).tag(action)
+                        }
+                    }
+                }
+
+                described("Action sent to the focused terminal when you close your right eye.") {
+                    Picker("Right Wink", selection: $state.rightWinkAction) {
+                        ForEach(WinkAction.allCases) { action in
+                            Text(action.rawValue).tag(action)
+                        }
+                    }
+                }
+
+                described("Eye aperture below this = \"closed\". Watch Live Aperture while closing one eye to find your value.") {
+                    LabeledContent("Closed Threshold") {
+                        HStack {
+                            Slider(value: $state.winkClosedThreshold, in: 0.05...0.3, step: 0.01)
+                            Text("\(state.winkClosedThreshold, specifier: "%.2f")")
+                                .monospacedDigit()
+                                .frame(width: 36, alignment: .trailing)
+                        }
+                    }
+                }
+
+                described("Eye aperture above this = \"open\". The gap between thresholds prevents flutter from noisy readings.") {
+                    LabeledContent("Open Threshold") {
+                        HStack {
+                            Slider(value: $state.winkOpenThreshold, in: 0.1...0.5, step: 0.01)
+                            Text("\(state.winkOpenThreshold, specifier: "%.2f")")
+                                .monospacedDigit()
+                                .frame(width: 36, alignment: .trailing)
+                        }
+                    }
+                }
+
+                described("Eye must stay closed at least this long. Filters out fast involuntary twitches.") {
+                    LabeledContent("Min Duration") {
+                        HStack {
+                            Slider(value: $state.minWinkDuration, in: 0.05...0.5, step: 0.05)
+                            Text("\(state.minWinkDuration, specifier: "%.2f")s")
+                                .monospacedDigit()
+                                .frame(width: 42, alignment: .trailing)
+                        }
+                    }
+                }
+
+                described("Eye closed longer than this = squint, not a wink. Ignored.") {
+                    LabeledContent("Max Duration") {
+                        HStack {
+                            Slider(value: $state.maxWinkDuration, in: 0.2...2.0, step: 0.1)
+                            Text("\(state.maxWinkDuration, specifier: "%.1f")s")
+                                .monospacedDigit()
+                                .frame(width: 42, alignment: .trailing)
+                        }
+                    }
+                }
+
+                described("Both eyes closing within this window = natural blink, ignored. Increase if normal blinks trigger winks.") {
+                    LabeledContent("Blink Reject") {
+                        HStack {
+                            Slider(value: $state.bilateralRejectWindow, in: 0.02...0.3, step: 0.02)
+                            Text("\(state.bilateralRejectWindow, specifier: "%.2f")s")
+                                .monospacedDigit()
+                                .frame(width: 42, alignment: .trailing)
+                        }
+                    }
+                }
+
+                described("Minimum time between accepted winks. Prevents rapid-fire from eye fatigue.") {
+                    LabeledContent("Cooldown") {
+                        HStack {
+                            Slider(value: $state.winkCooldown, in: 0.2...2.0, step: 0.1)
+                            Text("\(state.winkCooldown, specifier: "%.1f")s")
+                                .monospacedDigit()
+                                .frame(width: 42, alignment: .trailing)
+                        }
+                    }
+                }
+
+                LabeledContent("Live Aperture") {
+                    HStack(spacing: 12) {
+                        Text("L: \(state.leftEyeAperture, specifier: "%.2f")")
+                            .monospacedDigit()
+                        Text("R: \(state.rightEyeAperture, specifier: "%.2f")")
+                            .monospacedDigit()
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+                settingHint("Real-time eye openness. Watch these while winking to dial in thresholds.")
+
+                WinkIndicatorView(lastWinkEvent: state.lastWinkEvent)
             }
 
             Section("Transcription Log") {
@@ -396,9 +585,11 @@ struct SettingsView: View {
             }
 
             Section("Terminal") {
-                Picker("Terminal App", selection: $state.preferredTerminal) {
-                    ForEach(PreferredTerminal.allCases) { terminal in
-                        Text(terminal.rawValue).tag(terminal)
+                described("iTerm2 recommended for better AppleScript support and window management.") {
+                    Picker("Terminal App", selection: $state.preferredTerminal) {
+                        ForEach(PreferredTerminal.allCases) { terminal in
+                            Text(terminal.rawValue).tag(terminal)
+                        }
                     }
                 }
 
@@ -407,16 +598,37 @@ struct SettingsView: View {
                         .font(.caption)
                 }
 
-                LabeledContent("Command to run on terminal launch") {
-                    TextField("", text: $state.terminalLaunchCommand)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(.body, design: .monospaced))
+                described("Create New opens four terminal windows. Use Existing finds and adopts windows already positioned in quadrants.") {
+                    Picker("Setup Mode", selection: $state.terminalSetupMode) {
+                        ForEach(TerminalSetupMode.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+
+                if state.terminalSetupMode == .launchNew {
+                    described("Shell command run in each terminal quadrant on launch. Typically a Claude CLI command.") {
+                        LabeledContent("Command to run on terminal launch") {
+                            TextField("", text: $state.terminalLaunchCommand)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(.body, design: .monospaced))
+                        }
+                    }
                 }
 
                 Button {
                     Task { await coordinator.setupTerminals() }
                 } label: {
-                    Label("Launch Terminals", systemImage: "terminal")
+                    Label(
+                        state.terminalSetupMode == .launchNew ? "Create Terminals" : "Adopt Terminals",
+                        systemImage: state.terminalSetupMode == .launchNew ? "terminal" : "rectangle.on.rectangle"
+                    )
+                }
+                if state.terminalSetupMode == .launchNew {
+                    settingHint("Creates four terminal windows arranged in screen quadrants and runs the launch command in each.")
+                } else {
+                    settingHint("Scans for existing terminal windows positioned in each quadrant and adopts them for management.")
                 }
 
                 LabeledContent("Manual Focus") {
@@ -429,11 +641,11 @@ struct SettingsView: View {
                                     .foregroundStyle(appState.focusedQuadrant == quadrant ? Color.accentColor : Color.secondary)
                             }
                             .buttonStyle(.borderless)
-                            .help(quadrant.displayName)
                         }
                     }
                 }
                 .disabled(!appState.isTerminalSetup)
+                settingHint("Click a quadrant to manually focus that terminal without eye tracking.")
 
                 Button {
                     coordinator.testSendText()
@@ -441,6 +653,7 @@ struct SettingsView: View {
                     Label("Send Test Command", systemImage: "paperplane")
                 }
                 .disabled(appState.focusedQuadrant == nil || !appState.isTerminalSetup)
+                settingHint("Sends a test string to the focused terminal to verify the connection.")
             }
 
             Section("Onboarding") {
@@ -448,6 +661,7 @@ struct SettingsView: View {
                     OnboardingState.reset()
                     coordinator.showOnboardingWalkthrough()
                 }
+                settingHint("Re-show the first-run walkthrough explaining how eyeTerm works.")
             }
 
             Section {
@@ -456,7 +670,7 @@ struct SettingsView: View {
                 } label: {
                     Label("Save Settings as Default", systemImage: "square.and.arrow.down")
                 }
-                .help("Writes current settings to saved-defaults.json for Claude to bake into the next build")
+                settingHint("Writes current settings to saved-defaults.json for baking into the next build.")
             }
         }
         .formStyle(.grouped)
@@ -467,6 +681,41 @@ struct SettingsView: View {
                     window.level = .floating
                     window.makeKeyAndOrderFront(nil)
                 }
+            }
+        }
+    }
+
+    // MARK: - Helpers
+
+    @ViewBuilder
+    private func settingHint(_ text: String) -> some View {
+        if showDescriptions {
+            Text(text)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func windowPhraseRow(_ action: String, phrases: String) -> some View {
+        HStack(alignment: .top, spacing: 4) {
+            Text(action)
+                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+                .frame(width: 52, alignment: .leading)
+            Text(phrases)
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    private func described<Content: View>(_ hint: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            content()
+            if showDescriptions {
+                Text(hint)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
             }
         }
     }
@@ -502,6 +751,40 @@ struct SettingsView: View {
                 }
             }
             Spacer()
+        }
+    }
+}
+
+private struct WinkIndicatorView: View {
+    let lastWinkEvent: WinkEvent?
+    @State private var flash = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if let event = lastWinkEvent {
+                Image(systemName: event.side == .left ? "eye.trianglebadge.exclamationmark" : "eye.trianglebadge.exclamationmark")
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(flash ? .green : .secondary)
+                    .font(.system(size: 14))
+                Text("\(event.side == .left ? "Left" : "Right") wink \u{2192} \(event.action.shortLabel)")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundStyle(flash ? .primary : .secondary)
+            } else {
+                Image(systemName: "eye")
+                    .foregroundStyle(.secondary)
+                    .font(.system(size: 14))
+                Text("No wink detected yet")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 2)
+        .onChange(of: lastWinkEvent?.timestamp) {
+            flash = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                flash = false
+            }
         }
     }
 }

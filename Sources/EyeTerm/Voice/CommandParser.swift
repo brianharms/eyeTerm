@@ -12,6 +12,36 @@ final class CommandParser {
     /// Regex that matches text inside square brackets or parentheses (e.g. [inaudible], (silence)).
     private static let bracketedPattern = try! NSRegularExpression(pattern: "\\[.*?\\]|\\(.*?\\)", options: [])
 
+    private static let windowActionPhrases: [String: WindowAction] = [
+        "close it": .close,
+        "close the window": .close,
+        "close window": .close,
+        "close this": .close,
+        "dismiss": .close,
+        "dismiss it": .close,
+        "minimize": .minimize,
+        "minimize it": .minimize,
+        "minimize the window": .minimize,
+        "hide it": .hide,
+        "hide the window": .hide,
+        "hide": .hide,
+        "go back": .goBack,
+        "back": .goBack,
+        "go forward": .goForward,
+        "forward": .goForward,
+        "reload": .reload,
+        "reload the page": .reload,
+        "refresh": .reload,
+        "refresh the page": .reload,
+    ]
+
+    func detectWindowAction(_ text: String) -> WindowAction? {
+        let cleaned = stripBracketedText(text)
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return Self.windowActionPhrases[cleaned]
+    }
+
     private func stripBracketedText(_ text: String) -> String {
         let range = NSRange(location: 0, length: (text as NSString).length)
         return Self.bracketedPattern

@@ -271,6 +271,62 @@ Create a `CLAUDE.md` project file summarizing the entire codebase and conversati
 
 ---
 
+## Session — 2026-02-21 13:30
+
+### Goal
+Implement voice-controlled window management, wink gestures, terminal setup modes (launch new vs adopt existing), mic device picker, and onboarding walkthrough. Multiple sessions of iterative refinement on the terminal mode UI in the menu bar dropdown.
+
+### Accomplished
+- **WindowActionManager**: New `Sources/EyeTerm/Utilities/WindowActionManager.swift` — AppleScript-based close/minimize/hide/goBack/goForward/reload for non-terminal windows. Checks frontmost app bundle ID against protected set (iTerm2, Terminal.app) before acting.
+- **Voice window action detection**: `CommandParser.detectWindowAction()` matches phrases like "close it", "minimize", "go back", "reload" etc. Intercepted in `AppCoordinator.onTranscription` before command parsing — if frontmost app is not a terminal, executes the action and refocuses terminal.
+- **BlinkGestureDetector**: New `Sources/EyeTerm/Utilities/BlinkGestureDetector.swift` — processes per-frame eye aperture values, detects deliberate one-eye winks using configurable thresholds (closed/open), duration bounds (min/max), bilateral reject window (filters natural blinks), and cooldown. Wired into AppCoordinator via `wireBlinkDetector()`.
+- **Wink settings UI**: Full section in SettingsView with left/right wink action pickers (double escape, enter, single escape, none), threshold sliders, duration sliders, blink reject slider, cooldown slider, live aperture readout, and wink indicator flash.
+- **Terminal setup modes**: `TerminalSetupMode` enum with `.launchNew` ("Create New Terminals") and `.adoptExisting` ("Use Existing", default). `TerminalManager.adoptTerminals()` scans existing windows by position. Menu bar shows checkmark-based selection. "Launch Terminals" action button only shown when "Create New Terminals" is selected.
+- **Mic device picker**: CoreAudio `AudioObjectAddPropertyListenerBlock` for device change notifications. Picker in Settings Voice section with system default + enumerated devices.
+- **Onboarding walkthrough**: First-run overlay with step-by-step explanation.
+- **Menu bar terminal UI iterations**: Started with segmented picker (invisible in NSMenu popover), switched to styled buttons (selection too subtle), final version uses checkmark + text with clear primary/secondary contrast.
+
+### In Progress / Incomplete
+- Nothing incomplete — all features implemented and building
+
+### Key Decisions
+- SwiftUI `.pickerStyle(.segmented)` does not render in NSMenu-hosted popovers — replaced with custom checkmark buttons
+- Default terminal mode is "Use Existing" (`.adoptExisting`) — most common workflow is adopting pre-positioned windows
+- "Launch Terminals" action button hidden when "Use Existing" is selected since adoption happens via "Launch All"
+- Window actions protected: never act on iTerm2/Terminal.app — phrases pass through as typed text
+- Terminal refocus after window action sends user back to their focused quadrant
+
+### Files Changed
+- `Sources/EyeTerm/Utilities/WindowActionManager.swift` — new file
+- `Sources/EyeTerm/Utilities/BlinkGestureDetector.swift` — new file
+- `Sources/EyeTerm/Voice/CommandParser.swift` — added `detectWindowAction()`
+- `Sources/EyeTerm/App/AppCoordinator.swift` — window action interception, blink detector wiring, mic device listener, onboarding
+- `Sources/EyeTerm/App/AppState.swift` — `windowActionsEnabled`, `blinkGesturesEnabled`, wink settings, `TerminalSetupMode` enum, default changed to `.adoptExisting`
+- `Sources/EyeTerm/Terminal/TerminalManager.swift` — `adoptTerminals()`, `noWindowsToAdopt` error
+- `Sources/EyeTerm/UI/MenuBarView.swift` — checkmark-based terminal mode toggle, conditional action button
+- `Sources/EyeTerm/UI/SettingsView.swift` — window voice actions toggle, wink gestures section, terminal mode picker, mic picker
+- `Sources/EyeTerm/Voice/VoiceAudioPipeline.swift` — mic device selection support
+- `Sources/EyeTerm/Voice/VoiceTranscriptionBackend.swift` — protocol updates
+- `Sources/EyeTerm/Voice/WhisperKitBackend.swift` — backend updates
+- `Sources/EyeTerm/Voice/WhisperCppBackend.swift` — backend updates
+- `Sources/EyeTerm/EyeTracking/EyeTracker.swift` — blink gesture aperture data
+- `Sources/EyeTerm/EyeTracking/MediaPipeBackend.swift` — blink gesture aperture data
+- `eyeTerm.xcodeproj/project.pbxproj` — new files added
+- `CLAUDE.md` — updated with session 7 summary, new key files
+
+### Known Issues
+- None new
+
+### Running Services
+- eyeTerm app running in menu bar
+
+### Next Steps
+- Test window voice actions with browser windows
+- Test wink gestures with eye tracking active
+- Test terminal adopt mode with pre-positioned iTerm2 windows
+
+---
+
 ## TODO — Future Features
 
 ### L2CS-Net CoreML Backend (Third Tracking Backend)

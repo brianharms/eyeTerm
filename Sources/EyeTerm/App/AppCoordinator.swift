@@ -2,6 +2,7 @@ import Foundation
 import AppKit
 import SwiftUI
 import Observation
+import CoreAudio
 
 @Observable
 final class AppCoordinator {
@@ -12,8 +13,10 @@ final class AppCoordinator {
     let calibrationManager = CalibrationManager()
     private(set) var activeVoiceBackend: VoiceTranscriptionBackend
     let commandParser = CommandParser()
+    let windowActionManager = WindowActionManager()
     let transcriptionDiffer = StreamingTranscriptionDiffer()
     let dwellTimer: DwellTimer
+    let blinkDetector = BlinkGestureDetector()
 
     private var calibrationOverlayWindow: NSWindow?
     private var eyeTermOverlayWindow: NSPanel?
@@ -21,6 +24,7 @@ final class AppCoordinator {
     private var cameraPreviewWindow: NSPanel?
     private var errorDetailsWindow: NSPanel?
     private var waveformWindow: NSPanel?
+    private var deviceChangeListenerRegistered = false
 
     // Debug visualization smoothers (separate from pipeline smoothing)
     private var debugHeadFilter = EyeTermEMAFilter(alpha: 0.15)
@@ -43,8 +47,11 @@ final class AppCoordinator {
             hysteresisDelay: appState.hysteresisDelay
         )
         wireCallbacks()
+        wireBlinkDetector()
         pushAllSettings()
         observeSettings()
+        refreshMicList()
+        registerDeviceChangeListener()
 
         if !OnboardingState.hasCompleted {
             DispatchQueue.main.async { [weak self] in
@@ -136,57 +143,32 @@ final class AppCoordinator {
             guard let self else { return }
             self.appState.partialTranscription = ""
             self.appState.lastTranscription = text
-            let commands = self.commandParser.parse(text)
-            let cleaned = commands.compactMap { cmd -> String? in
-                if case .typeText(let s) = cmd { return s }
-                return nil
-            }.joined(separator: " ")
-            self.appState.transcriptionHistory.append((text: text, cleaned: cleaned, timestamp: Date()))
-            let cutoff = Date().addingTimeInterval(-10)
-            self.appState.transcriptionHistory.removeAll { $0.timestamp < cutoff }
-            print("[AppCoordinator] Parsed \(commands.count) commands from: \"\(text)\"")
 
-            guard let quadrant = self.appState.focusedQuadrant else {
-                print("[AppCoordinator] No focused quadrant — transcription ignored. Use manual focus or eye tracking.")
-                self.transcriptionDiffer.reset()
-                return
-            }
-            guard self.terminalManager.isSetup else {
-                self.transcriptionDiffer.reset()
-                return
-            }
-
-            print("[AppCoordinator] Sending to \(quadrant.displayName)")
-            Task {
-                for command in commands {
-                    do {
-                        switch command {
-                        case .typeText(let str):
-                            // Diff final text against what's already been streamed
-                            let edit = self.transcriptionDiffer.finalize(finalText: str)
-                            print("[AppCoordinator] Final diff: \(edit)")
-                            switch edit {
-                            case .noChange:
-                                break
-                            case .append(let appendStr):
-                                try await self.terminalManager.typeText(appendStr, in: quadrant)
-                            case .replaceFromOffset(let backspaces, let newText):
-                                try await self.terminalManager.sendBackspaces(backspaces, in: quadrant)
-                                if !newText.isEmpty {
-                                    try await self.terminalManager.typeText(newText, in: quadrant)
-                                }
-                            }
-                        case .execute:
-                            print("[AppCoordinator] Sending Return")
-                            try await self.terminalManager.sendReturn(in: quadrant)
+            // Window action interception — before command parsing
+            if self.appState.windowActionsEnabled,
+               let windowAction = self.commandParser.detectWindowAction(text) {
+                Task {
+                    let isProtected = await self.windowActionManager.isFrontmostProtected()
+                    if !isProtected {
+                        print("[AppCoordinator] Window action: \(windowAction.rawValue)")
+                        try? await self.windowActionManager.execute(windowAction)
+                        if let quadrant = self.appState.focusedQuadrant, self.terminalManager.isSetup {
+                            try? await self.terminalManager.focusTerminal(quadrant: quadrant)
                         }
-                    } catch {
-                        print("[AppCoordinator] Command failed: \(error)")
-                        self.appState.addError("Command failed: \(error.localizedDescription)")
+                        self.transcriptionDiffer.reset()
+                        self.appState.transcriptionHistory.append((text: text, cleaned: "[\(windowAction.rawValue)]", timestamp: Date()))
+                        let cutoff = Date().addingTimeInterval(-10)
+                        self.appState.transcriptionHistory.removeAll { $0.timestamp < cutoff }
+                        return
                     }
+                    // Frontmost is a terminal — dispatch text normally
+                    print("[AppCoordinator] Window action skipped — terminal is frontmost")
+                    self.dispatchTranscription(text)
                 }
-                self.transcriptionDiffer.reset()
+                return
             }
+
+            self.dispatchTranscription(text)
         }
 
         calibrationManager.onCalibrationComplete = { [weak self] result in
@@ -242,11 +224,110 @@ final class AppCoordinator {
         activeBackend.onFaceObservation = { [weak self] faceData in
             guard let self else { return }
             self.appState.faceObservationData = faceData
+            self.appState.leftEyeAperture = faceData?.leftEyeAperture ?? 0
+            self.appState.rightEyeAperture = faceData?.rightEyeAperture ?? 0
+            if self.appState.blinkGesturesEnabled {
+                self.blinkDetector.update(
+                    leftAperture: faceData?.leftEyeAperture,
+                    rightAperture: faceData?.rightEyeAperture
+                )
+            }
         }
 
         if let mpBackend = activeBackend as? MediaPipeBackend {
             mpBackend.onError = { [weak self] error in
                 self?.appState.addError("MediaPipe: \(error)")
+            }
+        }
+    }
+
+    private func dispatchTranscription(_ text: String) {
+        let commands = commandParser.parse(text)
+        let cleaned = commands.compactMap { cmd -> String? in
+            if case .typeText(let s) = cmd { return s }
+            return nil
+        }.joined(separator: " ")
+        appState.transcriptionHistory.append((text: text, cleaned: cleaned, timestamp: Date()))
+        let cutoff = Date().addingTimeInterval(-10)
+        appState.transcriptionHistory.removeAll { $0.timestamp < cutoff }
+        print("[AppCoordinator] Parsed \(commands.count) commands from: \"\(text)\"")
+
+        guard let quadrant = appState.focusedQuadrant else {
+            print("[AppCoordinator] No focused quadrant — transcription ignored. Use manual focus or eye tracking.")
+            transcriptionDiffer.reset()
+            return
+        }
+        guard terminalManager.isSetup else {
+            transcriptionDiffer.reset()
+            return
+        }
+
+        print("[AppCoordinator] Sending to \(quadrant.displayName)")
+        Task {
+            for command in commands {
+                do {
+                    switch command {
+                    case .typeText(let str):
+                        let edit = self.transcriptionDiffer.finalize(finalText: str)
+                        print("[AppCoordinator] Final diff: \(edit)")
+                        switch edit {
+                        case .noChange:
+                            break
+                        case .append(let appendStr):
+                            try await self.terminalManager.typeText(appendStr, in: quadrant)
+                        case .replaceFromOffset(let backspaces, let newText):
+                            try await self.terminalManager.sendBackspaces(backspaces, in: quadrant)
+                            if !newText.isEmpty {
+                                try await self.terminalManager.typeText(newText, in: quadrant)
+                            }
+                        }
+                    case .execute:
+                        print("[AppCoordinator] Sending Return")
+                        try await self.terminalManager.sendReturn(in: quadrant)
+                    }
+                } catch {
+                    print("[AppCoordinator] Command failed: \(error)")
+                    self.appState.addError("Command failed: \(error.localizedDescription)")
+                }
+            }
+            self.transcriptionDiffer.reset()
+        }
+    }
+
+    private func wireBlinkDetector() {
+        blinkDetector.onLeftWink = { [weak self] in
+            guard let self else { return }
+            let action = self.appState.leftWinkAction
+            self.appState.lastWinkEvent = WinkEvent(side: .left, action: action, timestamp: Date())
+            print("[AppCoordinator] Left wink → \(action.shortLabel)")
+            self.executeWinkAction(action)
+        }
+        blinkDetector.onRightWink = { [weak self] in
+            guard let self else { return }
+            let action = self.appState.rightWinkAction
+            self.appState.lastWinkEvent = WinkEvent(side: .right, action: action, timestamp: Date())
+            print("[AppCoordinator] Right wink → \(action.shortLabel)")
+            self.executeWinkAction(action)
+        }
+    }
+
+    private func executeWinkAction(_ action: WinkAction) {
+        guard action != .none else { return }
+        guard let quadrant = appState.focusedQuadrant, terminalManager.isSetup else { return }
+        Task {
+            do {
+                switch action {
+                case .doubleEscape:
+                    try await terminalManager.sendDoubleEscape(in: quadrant)
+                case .singleEscape:
+                    try await terminalManager.sendEscape(in: quadrant)
+                case .enter:
+                    try await terminalManager.sendReturn(in: quadrant)
+                case .none:
+                    break
+                }
+            } catch {
+                appState.addError("Wink action failed: \(error.localizedDescription)")
             }
         }
     }
@@ -268,11 +349,23 @@ final class AppCoordinator {
             _ = appState.overlayMode
             _ = appState.debugSmoothing
             _ = appState.micSensitivity
+            _ = appState.selectedMicDeviceUID
             _ = appState.voiceBackend
             _ = appState.overlayIconSize
             _ = appState.fusionDotSize
             _ = appState.preferredTerminal
             _ = appState.terminalLaunchCommand
+            _ = appState.blinkGesturesEnabled
+            _ = appState.winkClosedThreshold
+            _ = appState.winkOpenThreshold
+            _ = appState.leftWinkAction
+            _ = appState.rightWinkAction
+            _ = appState.minWinkDuration
+            _ = appState.maxWinkDuration
+            _ = appState.bilateralRejectWindow
+            _ = appState.winkCooldown
+            _ = appState.windowActionsEnabled
+            _ = appState.terminalSetupMode
         } onChange: { [weak self] in
             DispatchQueue.main.async {
                 self?.pushAllSettings()
@@ -293,6 +386,15 @@ final class AppCoordinator {
         activeBackend.parallaxCorrY = appState.parallaxCorrY
         activeBackend.headAmplification = appState.headAmplification
         activeVoiceBackend.silenceThreshold = Float(appState.micSensitivity)
+        let newUID = appState.selectedMicDeviceUID.isEmpty ? nil : appState.selectedMicDeviceUID
+        if activeVoiceBackend.inputDeviceUID != newUID {
+            activeVoiceBackend.inputDeviceUID = newUID
+            // Restart voice to apply the new device
+            if activeVoiceBackend.isRunning {
+                stopVoice()
+                Task { await startVoice() }
+            }
+        }
         let da = appState.debugSmoothing
         debugHeadFilter.alpha = da
         debugPupilFilter.alpha = da
@@ -302,6 +404,13 @@ final class AppCoordinator {
         debugCalFusedFilter.alpha = da
         terminalManager.preferredTerminal = appState.preferredTerminal
         terminalManager.launchCommand = appState.terminalLaunchCommand
+        blinkDetector.closedThreshold = appState.winkClosedThreshold
+        blinkDetector.openThreshold = appState.winkOpenThreshold
+        blinkDetector.minWinkDuration = appState.minWinkDuration
+        blinkDetector.maxWinkDuration = appState.maxWinkDuration
+        blinkDetector.bilateralRejectWindow = appState.bilateralRejectWindow
+        blinkDetector.cooldown = appState.winkCooldown
+        if !appState.blinkGesturesEnabled { blinkDetector.reset() }
         updateOverlayVisibility()
     }
 
@@ -348,7 +457,12 @@ final class AppCoordinator {
 
     func setupTerminals() async {
         do {
-            try await terminalManager.setupTerminals()
+            switch appState.terminalSetupMode {
+            case .launchNew:
+                try await terminalManager.setupTerminals()
+            case .adoptExisting:
+                try await terminalManager.adoptTerminals()
+            }
             appState.isTerminalSetup = true
             appState.statusMessage = "Terminals ready"
         } catch {
@@ -390,8 +504,10 @@ final class AppCoordinator {
 
     func startVoice() async {
         activeVoiceBackend.modelName = appState.whisperModel
+        activeVoiceBackend.inputDeviceUID = appState.selectedMicDeviceUID.isEmpty ? nil : appState.selectedMicDeviceUID
         commandParser.enableNormalization = appState.enableTextNormalization
         commandParser.executeKeyword = appState.executeKeyword
+        refreshMicList()
         do {
             try await activeVoiceBackend.start()
             await MainActor.run {
@@ -699,6 +815,77 @@ final class AppCoordinator {
         errorDetailsWindow = nil
     }
 
+    // MARK: - Microphone Enumeration
+
+    func refreshMicList() {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size) == noErr else { return }
+        let count = Int(size) / MemoryLayout<AudioDeviceID>.size
+        var deviceIDs = [AudioDeviceID](repeating: 0, count: count)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &deviceIDs) == noErr else { return }
+
+        var mics: [(uid: String, name: String)] = []
+        for deviceID in deviceIDs {
+            // Check if this device has input streams
+            var inputAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyStreams,
+                mScope: kAudioObjectPropertyScopeInput,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var streamSize: UInt32 = 0
+            guard AudioObjectGetPropertyDataSize(deviceID, &inputAddress, 0, nil, &streamSize) == noErr,
+                  streamSize > 0 else { continue }
+
+            // Get UID
+            var uidAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyDeviceUID,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var uid: CFString = "" as CFString
+            var uidSize = UInt32(MemoryLayout<CFString>.size)
+            guard AudioObjectGetPropertyData(deviceID, &uidAddress, 0, nil, &uidSize, &uid) == noErr else { continue }
+
+            // Get name
+            var nameAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioObjectPropertyName,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var name: CFString = "" as CFString
+            var nameSize = UInt32(MemoryLayout<CFString>.size)
+            guard AudioObjectGetPropertyData(deviceID, &nameAddress, 0, nil, &nameSize, &name) == noErr else { continue }
+
+            mics.append((uid: uid as String, name: name as String))
+        }
+
+        appState.availableMics = mics
+    }
+
+    private func registerDeviceChangeListener() {
+        guard !deviceChangeListenerRegistered else { return }
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let status = AudioObjectAddPropertyListenerBlock(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address,
+            DispatchQueue.main
+        ) { [weak self] _, _ in
+            self?.refreshMicList()
+        }
+        if status == noErr {
+            deviceChangeListenerRegistered = true
+        }
+    }
+
     // MARK: - Status
 
     private func updateStatus() {
@@ -773,9 +960,6 @@ final class AppCoordinator {
             onGetStarted: { [weak self] in
                 OnboardingState.markComplete()
                 self?.dismissOnboarding()
-                Task { [weak self] in
-                    await self?.startAfterOnboarding()
-                }
             },
             onExploreSettings: { [weak self] in
                 OnboardingState.markComplete()

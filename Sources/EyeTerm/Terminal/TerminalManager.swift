@@ -38,7 +38,9 @@ final class TerminalManager {
 
     /// Launch the preferred terminal, create four windows positioned in screen quadrants, and run the launch command in each.
     func setupTerminals() async throws {
-        guard !isSetup else { return }
+        // Allow re-launch if windows were manually closed
+        isSetup = false
+        windowIndices.removeAll()
 
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: preferredTerminal.bundleIdentifier) else {
             throw TerminalError.terminalNotInstalled(preferredTerminal)
@@ -97,6 +99,36 @@ final class TerminalManager {
             try await AppleScriptBridge.runAsync(script)
             try await Task.sleep(for: .milliseconds(400))
         }
+    }
+
+    /// Adopt existing terminal windows by scanning for windows already positioned in each quadrant.
+    func adoptTerminals() async throws {
+        isSetup = false
+        windowIndices.removeAll()
+
+        guard NSWorkspace.shared.urlForApplication(withBundleIdentifier: preferredTerminal.bundleIdentifier) != nil else {
+            throw TerminalError.terminalNotInstalled(preferredTerminal)
+        }
+
+        let orderedQuadrants: [ScreenQuadrant] = [.topLeft, .topRight, .bottomLeft, .bottomRight]
+        var adopted = 0
+
+        for quadrant in orderedQuadrants {
+            do {
+                let index = try await findWindowIndex(for: quadrant)
+                windowIndices[quadrant] = index
+                adopted += 1
+            } catch {
+                print("[TerminalManager] No window found for \(quadrant.displayName) — skipping")
+            }
+        }
+
+        guard adopted > 0 else {
+            throw TerminalError.noWindowsToAdopt
+        }
+
+        print("[TerminalManager] Adopted \(adopted)/4 terminal windows")
+        isSetup = true
     }
 
     // MARK: - Focus
@@ -182,6 +214,37 @@ final class TerminalManager {
             """
         }
         try await AppleScriptBridge.runAsync(script)
+    }
+
+    /// Send an Escape keystroke to the terminal session for the given quadrant.
+    func sendEscape(in quadrant: ScreenQuadrant) async throws {
+        let index = try await findWindowIndex(for: quadrant)
+        let app = preferredTerminal.appName
+        let script: String
+        switch preferredTerminal {
+        case .iTerm2:
+            script = """
+                tell application "\(app)"
+                    tell current session of window \(index)
+                        write text (character id 27) without newline
+                    end tell
+                end tell
+            """
+        case .terminal:
+            script = """
+                tell application "System Events"
+                    key code 53
+                end tell
+            """
+        }
+        try await AppleScriptBridge.runAsync(script)
+    }
+
+    /// Send two Escape keystrokes to the terminal session for the given quadrant.
+    func sendDoubleEscape(in quadrant: ScreenQuadrant) async throws {
+        try await sendEscape(in: quadrant)
+        try await Task.sleep(for: .milliseconds(50))
+        try await sendEscape(in: quadrant)
     }
 
     /// Send an Enter keystroke to the terminal session for the given quadrant.
@@ -289,6 +352,7 @@ final class TerminalManager {
 enum TerminalError: LocalizedError {
     case terminalNotInstalled(PreferredTerminal)
     case windowNotFound(ScreenQuadrant)
+    case noWindowsToAdopt
 
     var errorDescription: String? {
         switch self {
@@ -296,6 +360,8 @@ enum TerminalError: LocalizedError {
             return "\(terminal.rawValue) is not installed."
         case .windowNotFound(let quadrant):
             return "No managed terminal window found for \(quadrant.displayName)"
+        case .noWindowsToAdopt:
+            return "No existing terminal windows found to adopt. Open terminal windows and position them in screen quadrants first."
         }
     }
 }

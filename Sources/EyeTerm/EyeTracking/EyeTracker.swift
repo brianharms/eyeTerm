@@ -10,6 +10,19 @@ struct FaceObservationData {
     let rightPupilCenter: CGPoint?
     let yaw: Double?
     let pitch: Double?
+    let leftEyeAperture: Double?
+    let rightEyeAperture: Double?
+
+    /// Compute Eye Aperture Ratio from contour points: vertical extent / horizontal extent.
+    static func eyeApertureRatio(_ points: [CGPoint]) -> Double? {
+        guard points.count >= 4 else { return nil }
+        let xs = points.map(\.x)
+        let ys = points.map(\.y)
+        let width = Double(xs.max()! - xs.min()!)
+        guard width > 0 else { return nil }
+        let height = Double(ys.max()! - ys.min()!)
+        return height / width
+    }
 }
 
 final class EyeTermTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, EyeTrackingBackend {
@@ -244,14 +257,19 @@ final class EyeTermTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
                            y: bbox.origin.y + avg.y * bbox.height)
         }
 
+        let leftPts = absolutePoints(landmarks?.leftEye)
+        let rightPts = absolutePoints(landmarks?.rightEye)
+
         return FaceObservationData(
             boundingBox: bbox,
-            leftEyePoints: absolutePoints(landmarks?.leftEye),
-            rightEyePoints: absolutePoints(landmarks?.rightEye),
+            leftEyePoints: leftPts,
+            rightEyePoints: rightPts,
             leftPupilCenter: pupilCenter(landmarks?.leftPupil),
             rightPupilCenter: pupilCenter(landmarks?.rightPupil),
             yaw: face.yaw?.doubleValue,
-            pitch: face.pitch?.doubleValue
+            pitch: face.pitch?.doubleValue,
+            leftEyeAperture: FaceObservationData.eyeApertureRatio(leftPts),
+            rightEyeAperture: FaceObservationData.eyeApertureRatio(rightPts)
         )
     }
 }
