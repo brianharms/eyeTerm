@@ -8,6 +8,7 @@ struct EyeTermApp: App {
     init() {
         UserDefaults.standard.set(false, forKey: "NSQuitAlwaysKeepsWindows")
         let state = AppState()
+        state.loadPersistedSettings()
         _appState = State(initialValue: state)
         _coordinator = State(initialValue: AppCoordinator(appState: state))
     }

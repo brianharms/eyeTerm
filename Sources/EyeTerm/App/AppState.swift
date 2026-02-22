@@ -168,6 +168,113 @@ final class AppState {
 
         let url = URL(fileURLWithPath: "/Users/brianharms/Desktop/Claude Projects/eyeTerm/Sources/EyeTerm/saved-defaults.json")
         try? data.write(to: url)
+
+        // Also persist to Application Support so settings survive rebuilds
+        persistSettings()
+    }
+
+    // MARK: - Runtime Persistence (Application Support)
+
+    private static var settingsFileURL: URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let dir = appSupport.appendingPathComponent("eyeTerm")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("settings.json")
+    }
+
+    func persistSettings() {
+        let settings: [String: Any] = [
+            "trackingBackend": trackingBackend.rawValue,
+            "voiceBackend": voiceBackend.rawValue,
+            "dwellTimeThreshold": dwellTimeThreshold,
+            "hysteresisDelay": hysteresisDelay,
+            "whisperModel": whisperModel,
+            "enableTextNormalization": enableTextNormalization,
+            "executeKeyword": executeKeyword,
+            "eyeSmoothing": eyeSmoothing,
+            "headWeight": headWeight,
+            "headPitchSensitivity": headPitchSensitivity,
+            "parallaxCorrX": parallaxCorrX,
+            "parallaxCorrY": parallaxCorrY,
+            "headAmplification": headAmplification,
+            "overlayMode": overlayMode.rawValue,
+            "debugSmoothing": debugSmoothing,
+            "micSensitivity": micSensitivity,
+            "selectedMicDeviceUID": selectedMicDeviceUID,
+            "overlayIconSize": overlayIconSize,
+            "fusionDotSize": fusionDotSize,
+            "smoothedCircleSize": smoothedCircleSize,
+            "showRawOverlay": showRawOverlay,
+            "showCalibratedOverlay": showCalibratedOverlay,
+            "showSmoothedOverlay": showSmoothedOverlay,
+            "showQuadrantHighlighting": showQuadrantHighlighting,
+            "showActiveState": showActiveState,
+            "subtleEyeSize": subtleEyeSize,
+            "subtleEyeOpacity": subtleEyeOpacity,
+            "debugLineWidth": debugLineWidth,
+            "preferredTerminal": preferredTerminal.rawValue,
+            "terminalLaunchCommand": terminalLaunchCommand,
+            "blinkGesturesEnabled": blinkGesturesEnabled,
+            "winkClosedThreshold": winkClosedThreshold,
+            "winkOpenThreshold": winkOpenThreshold,
+            "leftWinkAction": leftWinkAction.rawValue,
+            "rightWinkAction": rightWinkAction.rawValue,
+            "minWinkDuration": minWinkDuration,
+            "maxWinkDuration": maxWinkDuration,
+            "bilateralRejectWindow": bilateralRejectWindow,
+            "winkCooldown": winkCooldown,
+            "windowActionsEnabled": windowActionsEnabled,
+            "terminalSetupMode": terminalSetupMode.rawValue,
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: settings, options: [.prettyPrinted, .sortedKeys]) else { return }
+        try? data.write(to: Self.settingsFileURL)
+    }
+
+    func loadPersistedSettings() {
+        guard let data = try? Data(contentsOf: Self.settingsFileURL),
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+
+        if let v = dict["trackingBackend"] as? String, let e = TrackingBackend(rawValue: v) { trackingBackend = e }
+        if let v = dict["voiceBackend"] as? String, let e = VoiceBackend(rawValue: v) { voiceBackend = e }
+        if let v = dict["dwellTimeThreshold"] as? Double { dwellTimeThreshold = v }
+        if let v = dict["hysteresisDelay"] as? Double { hysteresisDelay = v }
+        if let v = dict["whisperModel"] as? String { whisperModel = v }
+        if let v = dict["enableTextNormalization"] as? Bool { enableTextNormalization = v }
+        if let v = dict["executeKeyword"] as? String { executeKeyword = v }
+        if let v = dict["eyeSmoothing"] as? Double { eyeSmoothing = v }
+        if let v = dict["headWeight"] as? Double { headWeight = v }
+        if let v = dict["headPitchSensitivity"] as? Double { headPitchSensitivity = v }
+        if let v = dict["parallaxCorrX"] as? Double { parallaxCorrX = v }
+        if let v = dict["parallaxCorrY"] as? Double { parallaxCorrY = v }
+        if let v = dict["headAmplification"] as? Double { headAmplification = v }
+        if let v = dict["overlayMode"] as? Int, let e = OverlayMode(rawValue: v) { overlayMode = e }
+        if let v = dict["debugSmoothing"] as? Double { debugSmoothing = v }
+        if let v = dict["micSensitivity"] as? Double { micSensitivity = v }
+        if let v = dict["selectedMicDeviceUID"] as? String { selectedMicDeviceUID = v }
+        if let v = dict["overlayIconSize"] as? Double { overlayIconSize = v }
+        if let v = dict["fusionDotSize"] as? Double { fusionDotSize = v }
+        if let v = dict["smoothedCircleSize"] as? Double { smoothedCircleSize = v }
+        if let v = dict["showRawOverlay"] as? Bool { showRawOverlay = v }
+        if let v = dict["showCalibratedOverlay"] as? Bool { showCalibratedOverlay = v }
+        if let v = dict["showSmoothedOverlay"] as? Bool { showSmoothedOverlay = v }
+        if let v = dict["showQuadrantHighlighting"] as? Bool { showQuadrantHighlighting = v }
+        if let v = dict["showActiveState"] as? Bool { showActiveState = v }
+        if let v = dict["subtleEyeSize"] as? Double { subtleEyeSize = v }
+        if let v = dict["subtleEyeOpacity"] as? Double { subtleEyeOpacity = v }
+        if let v = dict["debugLineWidth"] as? Double { debugLineWidth = v }
+        if let v = dict["preferredTerminal"] as? String, let e = PreferredTerminal(rawValue: v) { preferredTerminal = e }
+        if let v = dict["terminalLaunchCommand"] as? String { terminalLaunchCommand = v }
+        if let v = dict["blinkGesturesEnabled"] as? Bool { blinkGesturesEnabled = v }
+        if let v = dict["winkClosedThreshold"] as? Double { winkClosedThreshold = v }
+        if let v = dict["winkOpenThreshold"] as? Double { winkOpenThreshold = v }
+        if let v = dict["leftWinkAction"] as? String, let e = WinkAction(rawValue: v) { leftWinkAction = e }
+        if let v = dict["rightWinkAction"] as? String, let e = WinkAction(rawValue: v) { rightWinkAction = e }
+        if let v = dict["minWinkDuration"] as? Double { minWinkDuration = v }
+        if let v = dict["maxWinkDuration"] as? Double { maxWinkDuration = v }
+        if let v = dict["bilateralRejectWindow"] as? Double { bilateralRejectWindow = v }
+        if let v = dict["winkCooldown"] as? Double { winkCooldown = v }
+        if let v = dict["windowActionsEnabled"] as? Bool { windowActionsEnabled = v }
+        if let v = dict["terminalSetupMode"] as? String, let e = TerminalSetupMode(rawValue: v) { terminalSetupMode = e }
     }
 }
 
