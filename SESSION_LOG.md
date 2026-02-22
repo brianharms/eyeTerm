@@ -327,6 +327,50 @@ Implement voice-controlled window management, wink gestures, terminal setup mode
 
 ---
 
+## Session — 2026-02-22 02:30
+
+### Goal
+Fix transcription leaking across terminal switches when user speaks while switching gaze between terminal quadrants. Add more granular word-by-word delivery.
+
+### Accomplished
+- **Audio buffer flush on terminal switch**: `flushAudio()` added to `VoiceTranscriptionBackend` protocol and both backends (WhisperKit, WhisperCpp). Cancels in-flight transcription tasks and clears the audio buffer via `VoiceAudioPipeline.flushBuffer()`. Called in `AppCoordinator.dwellTimer.onDwellConfirmed` before `transcriptionDiffer.reset()` — prevents pre-switch audio from being transcribed into the new terminal.
+- **Audio trim after interim delivery**: `trimAudio(keepLastSeconds:)` added to protocol and both backends. After each successful partial text delivery to a terminal, trims the audio buffer to only keep the last 1.5 seconds, preventing Whisper from re-transcribing already-sent words.
+- **Faster interim interval**: Changed `VoiceAudioPipeline.interimInterval` from 1.0s to 0.5s for more frequent, granular word delivery.
+- **AudioBufferManager.trimToLast(seconds:)**: New method that removes all but the last N seconds of samples from the buffer.
+- **Improved wink detection** (bundled from prior uncommitted work): Tracks other eye's minimum aperture during a wink — rejects if the other eye dipped below `openThreshold` at any point, catching asymmetric natural blinks. `bilateralRejectWindow` default widened from 0.1 to 0.15.
+- **Settings revert button** (bundled): Added "Revert" button next to "Save Defaults" in settings.
+
+### In Progress / Incomplete
+- Nothing incomplete — all changes built and installed to /Applications
+
+### Key Decisions
+- Flush audio buffer (not just reset the differ) on terminal switch — this is the root cause fix
+- 1.5 second trim window after delivery balances context for Whisper accuracy vs preventing re-transcription
+- 0.5s interim interval chosen as balance between responsiveness and CPU load
+
+### Files Changed
+- `Sources/EyeTerm/Voice/VoiceTranscriptionBackend.swift` — added `flushAudio()`, `trimAudio(keepLastSeconds:)` to protocol
+- `Sources/EyeTerm/Voice/AudioBufferManager.swift` — added `trimToLast(seconds:)`
+- `Sources/EyeTerm/Voice/VoiceAudioPipeline.swift` — added `flushBuffer()`, `trimBuffer(keepLastSeconds:)`, changed `interimInterval` to 0.5
+- `Sources/EyeTerm/Voice/WhisperKitBackend.swift` — implemented `flushAudio()`, `trimAudio(keepLastSeconds:)`
+- `Sources/EyeTerm/Voice/WhisperCppBackend.swift` — implemented `flushAudio()`, `trimAudio(keepLastSeconds:)`
+- `Sources/EyeTerm/App/AppCoordinator.swift` — call `flushAudio()` on dwell confirmed, call `trimAudio()` after interim delivery
+- `Sources/EyeTerm/Utilities/BlinkGestureDetector.swift` — other-eye min tracking for wink rejection
+- `Sources/EyeTerm/UI/SettingsView.swift` — revert button
+
+### Known Issues
+- None new
+
+### Running Services
+- eyeTerm.app installed to /Applications — not currently running
+
+### Next Steps
+- Test: speak while looking at Terminal A, switch gaze to Terminal B mid-sentence, verify B doesn't receive pre-switch text
+- Test: new speech in Terminal B appears fresh, word by word
+- Test: improved wink detection rejects natural blinks more reliably
+
+---
+
 ## TODO — Future Features
 
 ### L2CS-Net CoreML Backend (Third Tracking Backend)
