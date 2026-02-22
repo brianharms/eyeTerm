@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>eyeTerm — 3D Embossed Product Render</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: #e8e8e8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', sans-serif;
+  }
+
+  .scene {
+    position: relative;
+    width: 100vmin;
+    height: 100vmin;
+    max-width: 1200px;
+    max-height: 1200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Matte surface background with subtle radial gradient */
+  .surface {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      ellipse 80% 80% at 48% 45%,
+      #f0f0f0 0%,
+      #e8e8e8 40%,
+      #dedede 70%,
+      #d4d4d4 100%
+    );
+  }
+
+  /* Film grain overlay */
+  .grain {
+    position: absolute;
+    inset: 0;
+    opacity: 0.35;
+    pointer-events: none;
+    z-index: 10;
+    mix-blend-mode: multiply;
+  }
+
+  /* Subtle top-down light cone */
+  .light-cone {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      ellipse 50% 50% at 50% 42%,
+      rgba(255,255,255,0.18) 0%,
+      rgba(255,255,255,0) 70%
+    );
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  .emboss-container {
+    position: relative;
+    z-index: 2;
+    width: 50%;
+    height: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .emboss-svg {
+    width: 100%;
+    height: 100%;
+    filter: drop-shadow(0 2px 6px rgba(0,0,0,0.08));
+  }
+
+  /* Wordmark beneath the icon */
+  .wordmark {
+    position: absolute;
+    bottom: 18%;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 3;
+  }
+
+  .wordmark svg {
+    filter: drop-shadow(0 1px 3px rgba(0,0,0,0.06));
+  }
+
+  /* Ambient reflection on the surface */
+  .reflection {
+    position: absolute;
+    width: 54%;
+    height: 8%;
+    bottom: 22%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: radial-gradient(
+      ellipse 100% 100% at 50% 0%,
+      rgba(255,255,255,0.10) 0%,
+      rgba(255,255,255,0) 100%
+    );
+    filter: blur(18px);
+    z-index: 1;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<div class="scene">
+  <!-- Matte surface -->
+  <div class="surface"></div>
+
+  <!-- Ambient surface reflection beneath object -->
+  <div class="reflection"></div>
+
+  <!-- Top-down diffuse light -->
+  <div class="light-cone"></div>
+
+  <!-- Main embossed logo -->
+  <div class="emboss-container">
+    <svg class="emboss-svg" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <!-- Film grain pattern -->
+        <filter id="grain" x="0%" y="0%" width="100%" height="100%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="4" stitchTiles="stitch" result="noise"/>
+          <feColorMatrix type="saturate" values="0" in="noise" result="mono"/>
+          <feComponentTransfer in="mono" result="clampedNoise">
+            <feFuncA type="linear" slope="0.5" intercept="0"/>
+          </feComponentTransfer>
+        </filter>
+
+        <!-- 3D Emboss / Blind emboss bevel effect -->
+        <filter id="emboss3d" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">
+          <!-- Create alpha shape for lighting -->
+          <feGaussianBlur in="SourceAlpha" stdDeviation="6" result="blurred"/>
+
+          <!-- Top-down specular highlight (strong, from above-left) -->
+          <feSpecularLighting in="blurred" surfaceScale="12" specularConstant="1.8" specularExponent="35"
+                              lighting-color="#ffffff" result="specTop">
+            <fePointLight x="460" y="350" z="400"/>
+          </feSpecularLighting>
+          <feComposite in="specTop" in2="SourceAlpha" operator="in" result="specTopClip"/>
+
+          <!-- Secondary specular from above-right for rim -->
+          <feSpecularLighting in="blurred" surfaceScale="8" specularConstant="0.9" specularExponent="50"
+                              lighting-color="#ffffff" result="specRight">
+            <fePointLight x="620" y="380" z="350"/>
+          </feSpecularLighting>
+          <feComposite in="specRight" in2="SourceAlpha" operator="in" result="specRightClip"/>
+
+          <!-- Diffuse base lighting -->
+          <feDiffuseLighting in="blurred" surfaceScale="8" diffuseConstant="1.0"
+                             lighting-color="#f5f5f5" result="diffuse">
+            <fePointLight x="512" y="300" z="500"/>
+          </feDiffuseLighting>
+          <feComposite in="diffuse" in2="SourceAlpha" operator="in" result="diffuseClip"/>
+
+          <!-- Combine diffuse + specular highlights -->
+          <feComposite in="diffuseClip" in2="specTopClip" operator="arithmetic"
+                       k1="0" k2="0.6" k3="0.5" k4="0" result="litSurface"/>
+          <feComposite in="litSurface" in2="specRightClip" operator="arithmetic"
+                       k1="0" k2="1" k3="0.3" k4="0" result="fullLit"/>
+
+          <!-- Drop shadow beneath the raised shape -->
+          <feGaussianBlur in="SourceAlpha" stdDeviation="10" result="shadow"/>
+          <feOffset in="shadow" dx="3" dy="5" result="shadowOff"/>
+          <feComponentTransfer in="shadowOff" result="fadedShadow">
+            <feFuncA type="linear" slope="0.18" intercept="0"/>
+          </feComponentTransfer>
+
+          <!-- Inner shadow for depth -->
+          <!-- Invert alpha for inner shadow -->
+          <feComposite in="SourceAlpha" in2="SourceAlpha" operator="xor" result="invertedAlpha"/>
+          <feGaussianBlur in="SourceAlpha" stdDeviation="4" result="innerBlur"/>
+          <feOffset in="innerBlur" dx="-2" dy="-3" result="innerOff"/>
+          <feComposite in="innerOff" in2="SourceAlpha" operator="in" result="innerShadow"/>
+          <feComponentTransfer in="innerShadow" result="fadedInner">
+            <feFuncA type="linear" slope="0.06" intercept="0"/>
+          </feComponentTransfer>
+
+          <!-- Assemble: shadow -> lit surface -> inner shadow -->
+          <feMerge>
+            <feMergeNode in="fadedShadow"/>
+            <feMergeNode in="fullLit"/>
+            <feMergeNode in="fadedInner"/>
+          </feMerge>
+        </filter>
+
+        <!-- Chrome rim / glass bezel highlight -->
+        <filter id="chromeRim" x="-5%" y="-5%" width="110%" height="110%" color-interpolation-filters="sRGB">
+          <feMorphology in="SourceAlpha" operator="dilate" radius="3" result="expanded"/>
+          <feMorphology in="SourceAlpha" operator="dilate" radius="1" result="inner"/>
+          <feComposite in="expanded" in2="inner" operator="out" result="rimAlpha"/>
+          <feGaussianBlur in="rimAlpha" stdDeviation="2" result="rimBlurred"/>
+          <feSpecularLighting in="rimBlurred" surfaceScale="15" specularConstant="2.5" specularExponent="60"
+                              lighting-color="#ffffff" result="rimSpec">
+            <fePointLight x="480" y="320" z="500"/>
+          </feSpecularLighting>
+          <feComposite in="rimSpec" in2="rimBlurred" operator="in" result="rimLit"/>
+          <feComponentTransfer in="rimLit" result="rimFaded">
+            <feFuncA type="linear" slope="0.7" intercept="0"/>
+          </feComponentTransfer>
+          <feMerge>
+            <feMergeNode in="SourceGraphic"/>
+            <feMergeNode in="rimFaded"/>
+          </feMerge>
+        </filter>
+
+        <!-- Soft glow for iris circle -->
+        <filter id="irisEmboss" x="-15%" y="-15%" width="130%" height="130%" color-interpolation-filters="sRGB">
+          <feGaussianBlur in="SourceAlpha" stdDeviation="5" result="iBlur"/>
+          <feSpecularLighting in="iBlur" surfaceScale="14" specularConstant="2.0" specularExponent="40"
+                              lighting-color="#ffffff" result="iSpec">
+            <fePointLight x="490" y="460" z="380"/>
+          </feSpecularLighting>
+          <feComposite in="iSpec" in2="SourceAlpha" operator="in" result="iSpecClip"/>
+          <feDiffuseLighting in="iBlur" surfaceScale="10" diffuseConstant="1.1"
+                             lighting-color="#f0f0f0" result="iDiff">
+            <fePointLight x="512" y="420" z="450"/>
+          </feDiffuseLighting>
+          <feComposite in="iDiff" in2="SourceAlpha" operator="in" result="iDiffClip"/>
+          <feComposite in="iDiffClip" in2="iSpecClip" operator="arithmetic"
+                       k1="0" k2="0.55" k3="0.55" k4="0" result="iLit"/>
+          <!-- Shadow -->
+          <feGaussianBlur in="SourceAlpha" stdDeviation="7" result="iShadow"/>
+          <feOffset in="iShadow" dx="2" dy="4" result="iShadowOff"/>
+          <feComponentTransfer in="iShadowOff" result="iShadowFade">
+            <feFuncA type="linear" slope="0.15" intercept="0"/>
+          </feComponentTransfer>
+          <feMerge>
+            <feMergeNode in="iShadowFade"/>
+            <feMergeNode in="iLit"/>
+          </feMerge>
+        </filter>
+
+        <!-- Pupil cutout emboss (inset) -->
+        <filter id="pupilInset" x="-15%" y="-15%" width="130%" height="130%" color-interpolation-filters="sRGB">
+          <feGaussianBlur in="SourceAlpha" stdDeviation="4" result="pBlur"/>
+          <feDiffuseLighting in="pBlur" surfaceScale="-8" diffuseConstant="1.0"
+                             lighting-color="#f0f0f0" result="pDiff">
+            <fePointLight x="440" y="380" z="350"/>
+          </feDiffuseLighting>
+          <feComposite in="pDiff" in2="SourceAlpha" operator="in" result="pDiffClip"/>
+          <feSpecularLighting in="pBlur" surfaceScale="-6" specularConstant="1.2" specularExponent="30"
+                              lighting-color="#ffffff" result="pSpec">
+            <fePointLight x="440" y="380" z="350"/>
+          </feSpecularLighting>
+          <feComposite in="pSpec" in2="SourceAlpha" operator="in" result="pSpecClip"/>
+          <feComposite in="pDiffClip" in2="pSpecClip" operator="arithmetic"
+                       k1="0" k2="0.6" k3="0.4" k4="0" result="pLit"/>
+          <!-- Inner highlight at bottom-right edge (inset feel) -->
+          <feGaussianBlur in="SourceAlpha" stdDeviation="3" result="pInner"/>
+          <feOffset in="pInner" dx="3" dy="3" result="pInnerOff"/>
+          <feComposite in="SourceAlpha" in2="pInnerOff" operator="out" result="pInnerEdge"/>
+          <feComponentTransfer in="pInnerEdge" result="pInnerFade">
+            <feFuncA type="linear" slope="0.12" intercept="0"/>
+          </feComponentTransfer>
+          <feMerge>
+            <feMergeNode in="pLit"/>
+            <feMergeNode in="pInnerFade"/>
+          </feMerge>
+        </filter>
+
+        <!-- Wordmark emboss -->
+        <filter id="textEmboss" x="-10%" y="-20%" width="120%" height="140%" color-interpolation-filters="sRGB">
+          <feGaussianBlur in="SourceAlpha" stdDeviation="2.5" result="tBlur"/>
+          <feSpecularLighting in="tBlur" surfaceScale="6" specularConstant="1.5" specularExponent="30"
+                              lighting-color="#ffffff" result="tSpec">
+            <fePointLight x="250" y="20" z="300"/>
+          </feSpecularLighting>
+          <feComposite in="tSpec" in2="SourceAlpha" operator="in" result="tSpecClip"/>
+          <feDiffuseLighting in="tBlur" surfaceScale="5" diffuseConstant="0.9"
+                             lighting-color="#f2f2f2" result="tDiff">
+            <fePointLight x="250" y="30" z="350"/>
+          </feDiffuseLighting>
+          <feComposite in="tDiff" in2="SourceAlpha" operator="in" result="tDiffClip"/>
+          <feComposite in="tDiffClip" in2="tSpecClip" operator="arithmetic"
+                       k1="0" k2="0.55" k3="0.55" k4="0" result="tLit"/>
+          <feGaussianBlur in="SourceAlpha" stdDeviation="4" result="tShadow"/>
+          <feOffset in="tShadow" dx="1.5" dy="3" result="tShadowOff"/>
+          <feComponentTransfer in="tShadowOff" result="tShadowFade">
+            <feFuncA type="linear" slope="0.12" intercept="0"/>
+          </feComponentTransfer>
+          <feMerge>
+            <feMergeNode in="tShadowFade"/>
+            <feMergeNode in="tLit"/>
+          </feMerge>
+        </filter>
+      </defs>
+
+      <!-- Eye outline - embossed raised shape -->
+      <g filter="url(#emboss3d)">
+        <g filter="url(#chromeRim)">
+          <path d="M512 323C615.56 323 716.344 386.205 795.804 500.701L802.821 510.804L803.222 511.381L802.815 511.953L790.462 529.373L790.46 529.376C710.943 640.615 611.552 701.955 510.087 701.955C508.941 702.013 507.794 702.013 506.648 701.955C404.076 700.381 305.094 636.243 227.842 521.516L221.172 511.645L220.789 511.078L221.178 510.516L227.964 500.703L227.965 500.701C307.425 386.205 408.441 323 512 323ZM512 359.839C423.923 359.839 336.779 413.427 265.57 511.44C334.815 609.396 420.225 663.732 507.142 664.885L509.23 664.903C597.468 665.242 685.526 610.977 758.189 511.2C686.982 413.366 600.074 359.839 512 359.839Z"
+                fill="#e0e0e0" stroke="#d8d8d8" stroke-width="2"/>
+        </g>
+      </g>
+
+      <!-- Iris circle - embossed -->
+      <g filter="url(#irisEmboss)">
+        <circle cx="512" cy="513" r="104" fill="#dcdcdc"/>
+      </g>
+
+      <!-- Square pupil cutout - inset/debossed -->
+      <g filter="url(#pupilInset)">
+        <rect x="402" y="402" width="110" height="110" fill="#e8e8e8" rx="4"/>
+      </g>
+    </svg>
+  </div>
+
+  <!-- Wordmark -->
+  <div class="wordmark">
+    <svg viewBox="0 0 500 70" width="260" height="36" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <filter id="textEmbossWm" x="-10%" y="-20%" width="120%" height="140%" color-interpolation-filters="sRGB">
+          <feGaussianBlur in="SourceAlpha" stdDeviation="2" result="tBlur"/>
+          <feSpecularLighting in="tBlur" surfaceScale="5" specularConstant="1.6" specularExponent="35"
+                              lighting-color="#ffffff" result="tSpec">
+            <fePointLight x="230" y="10" z="280"/>
+          </feSpecularLighting>
+          <feComposite in="tSpec" in2="SourceAlpha" operator="in" result="tSpecClip"/>
+          <feDiffuseLighting in="tBlur" surfaceScale="4" diffuseConstant="0.85"
+                             lighting-color="#f0f0f0" result="tDiff">
+            <fePointLight x="250" y="15" z="320"/>
+          </feDiffuseLighting>
+          <feComposite in="tDiff" in2="SourceAlpha" operator="in" result="tDiffClip"/>
+          <feComposite in="tDiffClip" in2="tSpecClip" operator="arithmetic"
+                       k1="0" k2="0.5" k3="0.55" k4="0" result="tLit"/>
+          <feGaussianBlur in="SourceAlpha" stdDeviation="3.5" result="tShadow"/>
+          <feOffset in="tShadow" dx="1" dy="2.5" result="tShadowOff"/>
+          <feComponentTransfer in="tShadowOff" result="tShadowFade">
+            <feFuncA type="linear" slope="0.1" intercept="0"/>
+          </feComponentTransfer>
+          <feMerge>
+            <feMergeNode in="tShadowFade"/>
+            <feMergeNode in="tLit"/>
+          </feMerge>
+        </filter>
+      </defs>
+      <text x="250" y="52" text-anchor="middle"
+            font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif"
+            font-size="52" font-weight="300" letter-spacing="12" fill="#d8d8d8"
+            filter="url(#textEmbossWm)">eyeTerm</text>
+    </svg>
+  </div>
+
+  <!-- Film grain overlay -->
+  <svg class="grain" viewBox="0 0 1200 1200" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none"
+       style="position:absolute;inset:0;width:100%;height:100%;">
+    <filter id="grainOverlay">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" stitchTiles="stitch" result="noise"/>
+      <feColorMatrix type="saturate" values="0" in="noise"/>
+    </filter>
+    <rect width="100%" height="100%" filter="url(#grainOverlay)" opacity="0.4"/>
+  </svg>
+</div>
+
+<script>
+  // Animate grain to make it feel alive (subtle re-seed on mousemove)
+  const grainFilter = document.querySelector('#grainOverlay feTurbulence');
+  let seed = 1;
+  document.addEventListener('mousemove', () => {
+    seed = (seed % 10) + 1;
+    grainFilter.setAttribute('seed', seed);
+  });
+</script>
+</body>
+</html>
