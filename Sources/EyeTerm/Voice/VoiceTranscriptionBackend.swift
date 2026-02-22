@@ -18,6 +18,8 @@ protocol VoiceTranscriptionBackend: AnyObject {
     var inputDeviceUID: String? { get set }
     func start() async throws
     func stop()
+    func flushAudio()
+    func trimAudio(keepLastSeconds: Double)
 }
 
 enum VoiceModelState {

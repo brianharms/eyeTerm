@@ -665,12 +665,18 @@ struct SettingsView: View {
             }
 
             Section {
-                Button {
-                    appState.saveSettingsAsDefaults()
-                } label: {
-                    Label("Save Settings as Default", systemImage: "square.and.arrow.down")
+                HStack {
+                    Button {
+                        appState.saveSettingsAsDefaults()
+                    } label: {
+                        Label("Save Defaults", systemImage: "square.and.arrow.down")
+                    }
+                    Button {
+                        appState.loadPersistedSettings()
+                    } label: {
+                        Label("Revert", systemImage: "arrow.uturn.backward")
+                    }
                 }
-                settingHint("Writes current settings to saved-defaults.json for baking into the next build.")
             }
         }
         .formStyle(.grouped)

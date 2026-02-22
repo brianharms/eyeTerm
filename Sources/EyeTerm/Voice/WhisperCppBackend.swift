@@ -65,6 +65,16 @@ final class WhisperCppBackend: VoiceTranscriptionBackend {
         isRunning = false
     }
 
+    func flushAudio() {
+        activeWhisperTask?.cancel()
+        activeWhisperTask = nil
+        pipeline.flushBuffer()
+    }
+
+    func trimAudio(keepLastSeconds: Double) {
+        pipeline.trimBuffer(keepLastSeconds: keepLastSeconds)
+    }
+
     // MARK: - Private
 
     private func transcribe(audio: [Float]) {

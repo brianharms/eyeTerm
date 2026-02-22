@@ -74,6 +74,19 @@ final class WhisperKitBackend: VoiceTranscriptionBackend {
         isRunning = false
     }
 
+    func flushAudio() {
+        transcriptionTask?.cancel()
+        transcriptionTask = nil
+        interimTask?.cancel()
+        interimTask = nil
+        isTranscribing = false
+        pipeline.flushBuffer()
+    }
+
+    func trimAudio(keepLastSeconds: Double) {
+        pipeline.trimBuffer(keepLastSeconds: keepLastSeconds)
+    }
+
     // MARK: - Private
 
     private func transcribe(audio: [Float]) {

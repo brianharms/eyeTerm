@@ -7,7 +7,7 @@ final class VoiceAudioPipeline {
     var onInterimAudioReady: (([Float]) -> Void)?
     var silenceThreshold: Float = 0.01
     var silenceDuration: TimeInterval = 0.5
-    var interimInterval: TimeInterval = 1.0
+    var interimInterval: TimeInterval = 0.5
     var inputDeviceUID: String?   // nil = system default
 
     private(set) var isRunning = false
@@ -114,6 +114,17 @@ final class VoiceAudioPipeline {
         isRunning = false
         isSpeaking = false
         silenceStart = nil
+    }
+
+    func flushBuffer() {
+        bufferManager.clear()
+        isSpeaking = false
+        silenceStart = nil
+        lastInterimEmit = nil
+    }
+
+    func trimBuffer(keepLastSeconds: Double) {
+        bufferManager.trimToLast(seconds: keepLastSeconds)
     }
 
     // MARK: - Private

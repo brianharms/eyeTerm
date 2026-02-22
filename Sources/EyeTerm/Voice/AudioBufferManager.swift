@@ -43,4 +43,13 @@ final class AudioBufferManager {
         defer { lock.unlock() }
         return buffer.isEmpty
     }
+
+    func trimToLast(seconds: Double) {
+        lock.lock()
+        defer { lock.unlock() }
+        let samplesToKeep = Int(seconds * sampleRate)
+        if buffer.count > samplesToKeep {
+            buffer.removeFirst(buffer.count - samplesToKeep)
+        }
+    }
 }

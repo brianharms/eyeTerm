@@ -82,6 +82,7 @@ final class AppCoordinator {
 
         dwellTimer.onDwellConfirmed = { [weak self] quadrant in
             guard let self else { return }
+            self.activeVoiceBackend.flushAudio()
             self.transcriptionDiffer.reset()
             self.appState.focusedQuadrant = quadrant
             guard self.appState.isTerminalSetup else { return }
@@ -127,11 +128,13 @@ final class AppCoordinator {
                         break
                     case .append(let str):
                         try await self.terminalManager.typeText(str, in: quadrant)
+                        self.activeVoiceBackend.trimAudio(keepLastSeconds: 1.5)
                     case .replaceFromOffset(let backspaces, let newText):
                         try await self.terminalManager.sendBackspaces(backspaces, in: quadrant)
                         if !newText.isEmpty {
                             try await self.terminalManager.typeText(newText, in: quadrant)
                         }
+                        self.activeVoiceBackend.trimAudio(keepLastSeconds: 1.5)
                     }
                 } catch {
                     print("[AppCoordinator] Partial command failed: \(error)")
