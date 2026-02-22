@@ -31,17 +31,17 @@ struct MenuBarView: View {
                         .foregroundStyle(.green)
                         .font(.caption2)
                 }
-                Spacer()
-                if !(appState.isEyeTrackingActive && appState.isVoiceActive && appState.isTerminalSetup) {
-                    Button {
-                        Task { await coordinator.startAll() }
-                    } label: {
-                        Label("Launch All", systemImage: "bolt.fill")
-                    }
-                    .buttonStyle(CompactMenuButtonStyle())
-                    .font(.caption)
-                    .fontWeight(.semibold)
+            }
+
+            if !(appState.isEyeTrackingActive && appState.isVoiceActive && appState.isTerminalSetup) {
+                Button {
+                    Task { await coordinator.startAll() }
+                } label: {
+                    Label("Launch All", systemImage: "bolt.fill")
                 }
+                .buttonStyle(CompactMenuButtonStyle())
+                .font(.caption)
+                .fontWeight(.semibold)
             }
 
             // ── Eye Tracking ──
@@ -112,17 +112,18 @@ struct MenuBarView: View {
             }
             .font(.caption)
 
-            if appState.terminalSetupMode == .launchNew {
-                Button {
-                    Task { await coordinator.setupTerminals() }
-                } label: {
-                    Label("Launch Terminals", systemImage: "bolt.fill")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .buttonStyle(.borderless)
-                .controlSize(.mini)
-                .font(.caption)
+            Button {
+                Task { await coordinator.setupTerminals() }
+            } label: {
+                Label(
+                    appState.terminalSetupMode == .launchNew ? "Launch Terminals" : "Adopt Terminals",
+                    systemImage: appState.terminalSetupMode == .launchNew ? "bolt.fill" : "rectangle.inset.filled.and.cursorarrow"
+                )
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .buttonStyle(.borderless)
+            .controlSize(.mini)
+            .font(.caption)
 
             // ── Utilities ──
             Divider()
