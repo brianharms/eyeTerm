@@ -330,120 +330,6 @@ struct SettingsView: View {
                 }
             }
 
-            Section("Voice") {
-                Button {
-                    if state.isVoiceActive {
-                        coordinator.stopVoice()
-                    } else {
-                        Task { await coordinator.startVoice() }
-                    }
-                } label: {
-                    Label(state.isVoiceActive ? "Stop Voice" : "Start Voice",
-                          systemImage: state.isVoiceActive ? "mic.slash" : "mic")
-                }
-
-                described("WhisperKit uses CoreML + Neural Engine (fast). whisper.cpp is CPU-only (slower, no framework deps).") {
-                    Picker("Voice Engine", selection: $state.voiceBackend) {
-                        ForEach(VoiceBackend.allCases) { backend in
-                            Text(backend.rawValue).tag(backend)
-                        }
-                    }
-                    .onChange(of: state.voiceBackend) { _, newValue in
-                        coordinator.switchVoiceBackend(to: newValue)
-                    }
-                }
-
-                described("Which microphone to capture from. System Default uses whatever macOS has selected.") {
-                    Picker("Microphone", selection: $state.selectedMicDeviceUID) {
-                        Text("System Default").tag("")
-                        ForEach(state.availableMics, id: \.uid) { mic in
-                            Text(mic.name).tag(mic.uid)
-                        }
-                    }
-                }
-
-                described("Larger models are more accurate but slower and use more memory. small.en is a good balance.") {
-                    Picker("Whisper Model", selection: $state.whisperModel) {
-                        ForEach(whisperModels, id: \.self) { model in
-                            Text(model).tag(model)
-                        }
-                    }
-                }
-
-                described("Say this phrase to send text to the terminal and press Enter. The keyword is stripped from output.") {
-                    LabeledContent("Execute Keyword") {
-                        VStack(alignment: .trailing, spacing: 4) {
-                            Picker("", selection: Binding(
-                                get: {
-                                    keywordPresets.contains(state.executeKeyword) ? state.executeKeyword : "__custom__"
-                                },
-                                set: { newValue in
-                                    if newValue == "__custom__" {
-                                        state.executeKeyword = ""
-                                    } else {
-                                        state.executeKeyword = newValue
-                                    }
-                                }
-                            )) {
-                                ForEach(keywordPresets, id: \.self) { preset in
-                                    Text("\"\(preset)\"").tag(preset)
-                                }
-                                Text("Custom...").tag("__custom__")
-                            }
-                            .labelsHidden()
-
-                            if !keywordPresets.contains(state.executeKeyword) {
-                                TextField("Custom keyword", text: $state.executeKeyword)
-                                    .textFieldStyle(.roundedBorder)
-                                    .frame(width: 160)
-                                    .focused($customKeywordFocused)
-                                    .onChange(of: state.executeKeyword) { _, newValue in
-                                        if newValue == "" {
-                                            customKeywordFocused = true
-                                        }
-                                    }
-                            }
-                        }
-                    }
-                }
-
-                described("Voice activity detection threshold. Lower = picks up quieter speech but also more background noise.") {
-                    LabeledContent("Mic Sensitivity") {
-                        HStack {
-                            Text("Sensitive")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                            Slider(value: $state.micSensitivity, in: 0.001...0.05)
-                            Text("Less sensitive")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-                described("Convert spoken forms to typed equivalents: \"at sign\" \u{2192} @, \"hashtag\" \u{2192} #, \"new line\" \u{2192} newline.") {
-                    Toggle("Text Normalization", isOn: $state.enableTextNormalization)
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Toggle("Window Voice Actions", isOn: $state.windowActionsEnabled)
-                    if showDescriptions {
-                        Text("Dismiss non-terminal windows by voice. Never acts on iTerm2 or Terminal.app.")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                        VStack(alignment: .leading, spacing: 3) {
-                            windowPhraseRow("Close", phrases: "close it · close window · dismiss")
-                            windowPhraseRow("Minimize", phrases: "minimize · minimize it")
-                            windowPhraseRow("Hide", phrases: "hide · hide it · hide the window")
-                            windowPhraseRow("Back", phrases: "go back · back  (\u{2318}[)")
-                            windowPhraseRow("Forward", phrases: "go forward · forward  (\u{2318}])")
-                            windowPhraseRow("Reload", phrases: "reload · refresh  (\u{2318}R)")
-                        }
-                        .padding(.top, 2)
-                    }
-                }
-            }
-
             Section("Wink Gestures") {
                 described("Detect deliberate one-eye winks to trigger terminal actions. Normal blinks are filtered out.") {
                     Toggle("Enable Wink Gestures", isOn: $state.blinkGesturesEnabled)
@@ -559,6 +445,120 @@ struct SettingsView: View {
                     }
                 }
                 settingHint("Guided wizard that measures your actual eye aperture and computes optimal thresholds.")
+            }
+
+            Section("Voice") {
+                Button {
+                    if state.isVoiceActive {
+                        coordinator.stopVoice()
+                    } else {
+                        Task { await coordinator.startVoice() }
+                    }
+                } label: {
+                    Label(state.isVoiceActive ? "Stop Voice" : "Start Voice",
+                          systemImage: state.isVoiceActive ? "mic.slash" : "mic")
+                }
+
+                described("WhisperKit uses CoreML + Neural Engine (fast). whisper.cpp is CPU-only (slower, no framework deps).") {
+                    Picker("Voice Engine", selection: $state.voiceBackend) {
+                        ForEach(VoiceBackend.allCases) { backend in
+                            Text(backend.rawValue).tag(backend)
+                        }
+                    }
+                    .onChange(of: state.voiceBackend) { _, newValue in
+                        coordinator.switchVoiceBackend(to: newValue)
+                    }
+                }
+
+                described("Which microphone to capture from. System Default uses whatever macOS has selected.") {
+                    Picker("Microphone", selection: $state.selectedMicDeviceUID) {
+                        Text("System Default").tag("")
+                        ForEach(state.availableMics, id: \.uid) { mic in
+                            Text(mic.name).tag(mic.uid)
+                        }
+                    }
+                }
+
+                described("Larger models are more accurate but slower and use more memory. small.en is a good balance.") {
+                    Picker("Whisper Model", selection: $state.whisperModel) {
+                        ForEach(whisperModels, id: \.self) { model in
+                            Text(model).tag(model)
+                        }
+                    }
+                }
+
+                described("Say this phrase to send text to the terminal and press Enter. The keyword is stripped from output.") {
+                    LabeledContent("Execute Keyword") {
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Picker("", selection: Binding(
+                                get: {
+                                    keywordPresets.contains(state.executeKeyword) ? state.executeKeyword : "__custom__"
+                                },
+                                set: { newValue in
+                                    if newValue == "__custom__" {
+                                        state.executeKeyword = ""
+                                    } else {
+                                        state.executeKeyword = newValue
+                                    }
+                                }
+                            )) {
+                                ForEach(keywordPresets, id: \.self) { preset in
+                                    Text("\"\(preset)\"").tag(preset)
+                                }
+                                Text("Custom...").tag("__custom__")
+                            }
+                            .labelsHidden()
+
+                            if !keywordPresets.contains(state.executeKeyword) {
+                                TextField("Custom keyword", text: $state.executeKeyword)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 160)
+                                    .focused($customKeywordFocused)
+                                    .onChange(of: state.executeKeyword) { _, newValue in
+                                        if newValue == "" {
+                                            customKeywordFocused = true
+                                        }
+                                    }
+                            }
+                        }
+                    }
+                }
+
+                described("Voice activity detection threshold. Lower = picks up quieter speech but also more background noise.") {
+                    LabeledContent("Mic Sensitivity") {
+                        HStack {
+                            Text("Sensitive")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Slider(value: $state.micSensitivity, in: 0.001...0.05)
+                            Text("Less sensitive")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                described("Convert spoken forms to typed equivalents: \"at sign\" \u{2192} @, \"hashtag\" \u{2192} #, \"new line\" \u{2192} newline.") {
+                    Toggle("Text Normalization", isOn: $state.enableTextNormalization)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Toggle("Window Voice Actions", isOn: $state.windowActionsEnabled)
+                    if showDescriptions {
+                        Text("Dismiss non-terminal windows by voice. Never acts on iTerm2 or Terminal.app.")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                        VStack(alignment: .leading, spacing: 3) {
+                            windowPhraseRow("Close", phrases: "close it · close window · dismiss")
+                            windowPhraseRow("Minimize", phrases: "minimize · minimize it")
+                            windowPhraseRow("Hide", phrases: "hide · hide it · hide the window")
+                            windowPhraseRow("Back", phrases: "go back · back  (\u{2318}[)")
+                            windowPhraseRow("Forward", phrases: "go forward · forward  (\u{2318}])")
+                            windowPhraseRow("Reload", phrases: "reload · refresh  (\u{2318}R)")
+                        }
+                        .padding(.top, 2)
+                    }
+                }
             }
 
             Section("Transcription Log") {
