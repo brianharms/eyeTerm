@@ -9,7 +9,6 @@
 /* Begin PBXBuildFile section */
 		0DB4A3C57630F35A3CFBF16C /* EyeTermApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 915C9661B7BE6D6F164A0040 /* EyeTermApp.swift */; };
 		11B4270C21D2B0C26C63B9A8 /* WalkthroughCompleteStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BFBC423FEE5A6C24E35E6A4 /* WalkthroughCompleteStep.swift */; };
-		1BC53B34EA0FF858AEA840DA /* WinkCalibrationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 888C08894EE417A8FEF2CC9D /* WinkCalibrationManager.swift */; };
 		208E503D5731C037797E241A /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F479EBA123EAD1D8AF8C083 /* AppState.swift */; };
 		21DB4BE7C28F9521BDB1E7DE /* AudioBufferManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADEDE3E5AF77B48EC6E6DE63 /* AudioBufferManager.swift */; };
 		21E42590DEEE0AD4D6380AA9 /* EyeTrackingBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED398BA8E1104FF3EA6FDB1E /* EyeTrackingBackend.swift */; };
@@ -27,7 +26,6 @@
 		5E4182D1E79F3784A3801D12 /* StatusIndicatorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55764B0C11E733EF0C9B98B6 /* StatusIndicatorView.swift */; };
 		61101B09FC72E11761BEA97E /* WalkthroughPermissionStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = E191C142576D26F474052C9A /* WalkthroughPermissionStep.swift */; };
 		61B0CA91C019C9FA263C7934 /* DwellTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9AA2CDC1E27588BD0C577F1 /* DwellTimer.swift */; };
-		7454AA2D4428DF91CC9F62CF /* WinkCalibrationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDCAACAF9465DA49C464AC38 /* WinkCalibrationView.swift */; };
 		7855E577DD5F72BC3447D8FB /* WhisperCppBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22AB2B33B94D0C90352E7773 /* WhisperCppBackend.swift */; };
 		878D4C13CA36B4F2DEAC543A /* saved-defaults.json in Resources */ = {isa = PBXBuildFile; fileRef = A4877E19FED1F5693E7DA064 /* saved-defaults.json */; };
 		8B4FE7D9C0076E5FDAA48FD6 /* VoiceTranscriptionBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00EE7448FBA6327EEFAA1E10 /* VoiceTranscriptionBackend.swift */; };
@@ -82,7 +80,6 @@
 		811B834E1D2F8DAB0E303F5B /* AudioWaveformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioWaveformView.swift; sourceTree = "<group>"; };
 		84D4C0776BA6D90F9E7C7F2C /* ErrorDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorDetailView.swift; sourceTree = "<group>"; };
 		872C3D4638932A8A5A21F201 /* EyeEMAFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EyeEMAFilter.swift; sourceTree = "<group>"; };
-		888C08894EE417A8FEF2CC9D /* WinkCalibrationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WinkCalibrationManager.swift; sourceTree = "<group>"; };
 		89796F11358BB87E1B29862A /* WalkthroughHowItWorksStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkthroughHowItWorksStep.swift; sourceTree = "<group>"; };
 		8BFBC423FEE5A6C24E35E6A4 /* WalkthroughCompleteStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkthroughCompleteStep.swift; sourceTree = "<group>"; };
 		8F479EBA123EAD1D8AF8C083 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
@@ -108,7 +105,6 @@
 		ECCA4DEC47BDAE22F003D57A /* VoiceAudioPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceAudioPipeline.swift; sourceTree = "<group>"; };
 		ED398BA8E1104FF3EA6FDB1E /* EyeTrackingBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EyeTrackingBackend.swift; sourceTree = "<group>"; };
 		FC597003EE3C0096B7F1C2E6 /* MediaPipeSetupManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaPipeSetupManager.swift; sourceTree = "<group>"; };
-		FDCAACAF9465DA49C464AC38 /* WinkCalibrationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WinkCalibrationView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -185,7 +181,6 @@
 				A05FD792E7E2FE9ABDCF9EB8 /* OverlayMode.swift */,
 				7660980D3A8CB84F2FA144DA /* SettingsView.swift */,
 				55764B0C11E733EF0C9B98B6 /* StatusIndicatorView.swift */,
-				FDCAACAF9465DA49C464AC38 /* WinkCalibrationView.swift */,
 				729243417F6F56D68B678168 /* Onboarding */,
 			);
 			path = UI;
@@ -262,7 +257,6 @@
 				FC597003EE3C0096B7F1C2E6 /* MediaPipeSetupManager.swift */,
 				D836DDC377E4359724D747C5 /* Permissions.swift */,
 				3B633A8E5AD8A95181449A1B /* WindowActionManager.swift */,
-				888C08894EE417A8FEF2CC9D /* WinkCalibrationManager.swift */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -425,8 +419,6 @@
 				CE53C8E9B52C4D729A52A315 /* WhisperKitBackend.swift in Sources */,
 				BA23CA32F38A27DEE5639D95 /* WindowActionManager.swift in Sources */,
 				A07944F32FE891DC7315DFC7 /* WindowLayout.swift in Sources */,
-				1BC53B34EA0FF858AEA840DA /* WinkCalibrationManager.swift in Sources */,
-				7454AA2D4428DF91CC9F62CF /* WinkCalibrationView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

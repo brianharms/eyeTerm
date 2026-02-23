@@ -1,5 +1,23 @@
 import Foundation
 
+struct WinkDiagnosticEvent {
+    enum Side { case left, right }
+    enum Outcome {
+        case fired
+        case bilateralBlink
+        case otherEyeNotOpen
+        case otherEyeDipped(otherMin: Double)
+        case tooShort(duration: Double)
+        case tooLong(duration: Double)
+        case cooldown(remaining: Double)
+    }
+    let side: Side
+    let duration: Double
+    let otherEyeMin: Double
+    let outcome: Outcome
+    let timestamp: Date
+}
+
 final class BlinkGestureDetector {
 
     // MARK: - Configuration
@@ -15,6 +33,7 @@ final class BlinkGestureDetector {
 
     var onLeftWink: (() -> Void)?
     var onRightWink: (() -> Void)?
+    var onDiagnosticEvent: ((WinkDiagnosticEvent) -> Void)?
 
     // MARK: - State
 
@@ -142,27 +161,55 @@ final class BlinkGestureDetector {
 
     private func checkWink(prevState: EyeState, newState: EyeState, otherState: EyeState,
                            otherEyeMin: Double, isLeft: Bool, now: Date) {
+        let side: WinkDiagnosticEvent.Side = isLeft ? .left : .right
+
         // Only trigger on closed → open transition
         guard case .closed(let closedSince) = prevState, case .open = newState else { return }
+        let duration = now.timeIntervalSince(closedSince)
 
         // Reject if bilateral blink
-        guard !bilateralRejected else { return }
+        if bilateralRejected {
+            onDiagnosticEvent?(WinkDiagnosticEvent(side: side, duration: duration, otherEyeMin: otherEyeMin, outcome: .bilateralBlink, timestamp: now))
+            return
+        }
 
         // Other eye must be open right now
-        guard case .open = otherState else { return }
+        if case .closing = otherState {
+            onDiagnosticEvent?(WinkDiagnosticEvent(side: side, duration: duration, otherEyeMin: otherEyeMin, outcome: .otherEyeNotOpen, timestamp: now))
+            return
+        }
+        if case .closed = otherState {
+            onDiagnosticEvent?(WinkDiagnosticEvent(side: side, duration: duration, otherEyeMin: otherEyeMin, outcome: .otherEyeNotOpen, timestamp: now))
+            return
+        }
 
         // Reject if the other eye dipped below openThreshold at any point during the wink.
-        // This catches asymmetric natural blinks where one eye leads but the other still dips.
-        guard otherEyeMin >= openThreshold else { return }
+        if otherEyeMin < openThreshold {
+            onDiagnosticEvent?(WinkDiagnosticEvent(side: side, duration: duration, otherEyeMin: otherEyeMin, outcome: .otherEyeDipped(otherMin: otherEyeMin), timestamp: now))
+            return
+        }
 
         // Check duration
-        let duration = now.timeIntervalSince(closedSince)
-        guard duration >= minWinkDuration && duration <= maxWinkDuration else { return }
+        if duration < minWinkDuration {
+            onDiagnosticEvent?(WinkDiagnosticEvent(side: side, duration: duration, otherEyeMin: otherEyeMin, outcome: .tooShort(duration: duration), timestamp: now))
+            return
+        }
+        if duration > maxWinkDuration {
+            onDiagnosticEvent?(WinkDiagnosticEvent(side: side, duration: duration, otherEyeMin: otherEyeMin, outcome: .tooLong(duration: duration), timestamp: now))
+            return
+        }
 
         // Check cooldown
-        if let last = lastWinkTime, now.timeIntervalSince(last) < cooldown { return }
+        if let last = lastWinkTime {
+            let elapsed = now.timeIntervalSince(last)
+            if elapsed < cooldown {
+                onDiagnosticEvent?(WinkDiagnosticEvent(side: side, duration: duration, otherEyeMin: otherEyeMin, outcome: .cooldown(remaining: cooldown - elapsed), timestamp: now))
+                return
+            }
+        }
 
         lastWinkTime = now
+        onDiagnosticEvent?(WinkDiagnosticEvent(side: side, duration: duration, otherEyeMin: otherEyeMin, outcome: .fired, timestamp: now))
         if isLeft {
             onLeftWink?()
         } else {

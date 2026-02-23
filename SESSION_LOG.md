@@ -4,6 +4,72 @@ This file tracks session handoffs so the next Claude Code instance can quickly g
 
 ---
 
+## Session — 2026-02-23 22:00
+
+### Goal
+1. Fix all code review issues (Critical/High/Medium) across the codebase with a parallel agent team.
+2. Reorder Settings sections: Wink Gestures before Voice.
+3. Remove the non-functional Wink Calibration wizard entirely.
+4. Replace it with a rich wink/blink detection log so the user can diagnose why winks aren't registering.
+
+### Accomplished
+- **11-file code review fix pass** (parallel 5-agent team, single build pass):
+  - `AppState.swift`: removed hardcoded path, wrapped `saveSettingsAsDefaults()` in `#if DEBUG`
+  - `TerminalManager.swift`: Terminal.app `do script` → `keystroke` via System Events; window index caching
+  - `VoiceAudioPipeline.swift`: VAD moved to `vadQueue` serial dispatch; buffer mutations serialized
+  - `WhisperKitBackend.swift`: `isTranscribing` TOCTOU fixed with `stateQueue.sync`; `isStopping` guard on result callbacks
+  - `AppCoordinator.swift`: NSWindow level observer filtered to `NSApp.windows`; `[weak self]` on asyncAfter closures; CoreAudio listener block stored + removed in `deinit`; `winkCalibrationManager.onComplete` dispatched to main
+  - `CalibrationManager.swift`: `isCalibrated` changed from `||` to `&&` (requires BOTH transforms)
+  - `MediaPipeBackend.swift`: `waitUntilExit()` added in `stop()`
+  - `BlinkGestureDetector.swift`: time-based `bilateralRejected` flag expiry
+  - `MediaPipeSetupManager.swift`: pip install timeout with `DispatchWorkItem` + `resumeOnce` guard
+  - `CommandParser.swift`: removed `("at", "@")` (kept `"at sign"`) to prevent false positives
+  - `MediaPipeSetupView.swift`: `ForEach` with `.enumerated()` for index-based IDs
+- **Settings reorder**: Wink Gestures section moved before Voice section
+- **Wink calibration removed**: Deleted `WinkCalibrationManager.swift`, `WinkCalibrationView.swift`; removed `showWinkCalibration`, `winkCalibrationValid` from AppState + all persist paths; removed `startWinkCalibration()` + `winkCalibrationManager` from AppCoordinator
+- **Wink diagnostic log added**:
+  - `WinkDiagnosticEvent` struct in `BlinkGestureDetector.swift` with `Side` + `Outcome` enums
+  - `onDiagnosticEvent` callback fires at every exit point of `checkWink()`: bilateralBlink, otherEyeNotOpen, otherEyeDipped(otherMin:), tooShort(duration:), tooLong(duration:), cooldown(remaining:), fired
+  - `winkDiagnosticLog: [WinkDiagnosticEvent]` in AppState (capped at 8), `appendWinkDiagnostic()` helper
+  - `AppCoordinator.wireBlinkDetector()` wires `onDiagnosticEvent` → `appState.appendWinkDiagnostic()` on main thread
+  - `WinkDiagnosticLogView` + `WinkDiagnosticRowView` in `SettingsView.swift` replace the calibration button: shows side (L=blue/R=orange), duration, outcome text (green=fired, secondary=rejected)
+- Build succeeded; app launched for testing
+
+### In Progress / Incomplete
+- User has not yet tested the diagnostic log — scheduled for tomorrow
+- CLAUDE.md still mentions wink calibration wizard in "Recent Work" and "Next Steps" sections — should be updated to reflect removal
+
+### Key Decisions
+- Diagnostic events fire on **every** closed→open transition (not just wink candidates), so bilateral blinks also appear in the log — gives full picture of what the detector sees
+- `bilateralBlink` rejection: the `bilateralRejected` flag fires at the rejection point even if duration is also out of bounds (flag checked first)
+- Log capped at 8 entries (newest first in UI via `.reversed()`)
+- `WinkDiagnosticEvent` defined in `BlinkGestureDetector.swift` — same module, no import needed
+
+### Files Changed
+- `Sources/EyeTerm/Utilities/BlinkGestureDetector.swift` — added `WinkDiagnosticEvent`, `onDiagnosticEvent`, rewrote `checkWink()`
+- `Sources/EyeTerm/App/AppState.swift` — added `winkDiagnosticLog`, `appendWinkDiagnostic()`, removed calibration state
+- `Sources/EyeTerm/App/AppCoordinator.swift` — wired `onDiagnosticEvent`, removed calibration manager/methods
+- `Sources/EyeTerm/UI/SettingsView.swift` — replaced calibration button with `WinkDiagnosticLogView`; swapped Wink/Voice section order
+- `Sources/EyeTerm/Utilities/WinkCalibrationManager.swift` — **deleted**
+- `Sources/EyeTerm/UI/WinkCalibrationView.swift` — **deleted**
+- `eyeTerm.xcodeproj/project.pbxproj` — regenerated via `xcodegen` to drop deleted file references
+- (Prior in session) `TerminalManager.swift`, `VoiceAudioPipeline.swift`, `WhisperKitBackend.swift`, `CalibrationManager.swift`, `MediaPipeBackend.swift`, `MediaPipeSetupManager.swift`, `CommandParser.swift`, `MediaPipeSetupView.swift`
+
+### Known Issues
+- Wink detection reliability still untested with the new log — user will verify tomorrow
+- Several pre-existing Swift warnings in AppCoordinator (Sendable, weak delegate, CFString UnsafeMutableRawPointer) — not new, not blocking
+
+### Running Services
+- eyeTerm.app launched from `/tmp/eyeterm-sim-build/Build/Products/Debug/eyeTerm.app`
+
+### Next Steps
+1. User tests wink detection log in Settings → Wink Gestures — verify events populate and rejection reasons are legible
+2. If winks still don't fire despite good log values, check if `blinkDetector.openThreshold` / `closedThreshold` match the logged `otherEyeMin` values
+3. Update CLAUDE.md: remove wink calibration wizard from "Recent Work Session 8" and "Next Steps" sections; add wink diagnostic log entry
+4. Consider: log could show `otherEyeMin` value inline even for non-dip rejections (currently only shown for `.otherEyeDipped`) — useful for tuning `openThreshold`
+
+---
+
 ## Session — 2026-02-18 01:19
 
 ### Goal

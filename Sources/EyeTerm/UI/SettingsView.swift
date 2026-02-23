@@ -431,20 +431,7 @@ struct SettingsView: View {
 
                 WinkIndicatorView(lastWinkEvent: state.lastWinkEvent)
 
-                LabeledContent("Auto-Calibrate") {
-                    Button {
-                        coordinator.startWinkCalibration()
-                    } label: {
-                        HStack(spacing: 6) {
-                            Text("Calibrate Winks")
-                            if state.winkCalibrationValid {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(.green)
-                            }
-                        }
-                    }
-                }
-                settingHint("Guided wizard that measures your actual eye aperture and computes optimal thresholds.")
+                WinkDiagnosticLogView(events: appState.winkDiagnosticLog)
             }
 
             Section("Voice") {
@@ -813,6 +800,76 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            Spacer()
+        }
+    }
+}
+
+struct WinkDiagnosticLogView: View {
+    let events: [WinkDiagnosticEvent]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Detection Log")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.bottom, 2)
+
+            if events.isEmpty {
+                Text("No events yet — try winking or blinking")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                ForEach(Array(events.reversed().enumerated()), id: \.offset) { _, event in
+                    WinkDiagnosticRowView(event: event)
+                }
+            }
+        }
+        .padding(8)
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(6)
+    }
+}
+
+struct WinkDiagnosticRowView: View {
+    let event: WinkDiagnosticEvent
+
+    var sideLabel: String { event.side == .left ? "L" : "R" }
+    var sideColor: Color { event.side == .left ? .blue : .orange }
+
+    var outcomeText: String {
+        switch event.outcome {
+        case .fired: return "Wink fired"
+        case .bilateralBlink: return "Bilateral blink (ignored)"
+        case .otherEyeNotOpen: return "Other eye not open"
+        case .otherEyeDipped(let min): return String(format: "Other eye dipped (min %.2f)", min)
+        case .tooShort(let d): return String(format: "Too short (%.2fs)", d)
+        case .tooLong(let d): return String(format: "Too long (%.2fs)", d)
+        case .cooldown(let r): return String(format: "Cooldown (%.1fs left)", r)
+        }
+    }
+
+    var outcomeColor: Color {
+        switch event.outcome {
+        case .fired: return .green
+        default: return .secondary
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(sideLabel)
+                .font(.caption.bold())
+                .foregroundStyle(sideColor)
+                .frame(width: 14)
+            Text(String(format: "%.2fs", event.duration))
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: 38, alignment: .trailing)
+            Text(outcomeText)
+                .font(.caption)
+                .foregroundStyle(outcomeColor)
             Spacer()
         }
     }

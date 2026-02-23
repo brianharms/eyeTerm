@@ -24,11 +24,9 @@ final class AppCoordinator {
     private var cameraPreviewWindow: NSPanel?
     private var errorDetailsWindow: NSPanel?
     private var waveformWindow: NSPanel?
-    private var winkCalibrationWindow: NSPanel?
     private var deviceChangeListenerRegistered = false
     private var deviceChangeListenerBlock: AudioObjectPropertyListenerBlock?
 
-    private(set) var winkCalibrationManager = WinkCalibrationManager()
     let mediaPipeSetupManager = MediaPipeSetupManager()
     private var mediaPipeSetupWindow: NSPanel?
 
@@ -342,6 +340,11 @@ final class AppCoordinator {
                 }
             }
             self.executeWinkAction(action)
+        }
+        blinkDetector.onDiagnosticEvent = { [weak self] event in
+            DispatchQueue.main.async {
+                self?.appState.appendWinkDiagnostic(event)
+            }
         }
     }
 
@@ -1106,70 +1109,6 @@ final class AppCoordinator {
     func dismissMediaPipeSetup() {
         mediaPipeSetupWindow?.close()
         mediaPipeSetupWindow = nil
-    }
-
-    // MARK: - Wink Calibration
-
-    func startWinkCalibration() {
-        guard appState.isEyeTrackingActive else {
-            appState.addError("Eye tracking must be active to calibrate wink thresholds. Start eye tracking first.")
-            return
-        }
-        winkCalibrationManager = WinkCalibrationManager()
-        winkCalibrationManager.getLeftAperture = { [weak self] in self?.appState.leftEyeAperture ?? 0 }
-        winkCalibrationManager.getRightAperture = { [weak self] in self?.appState.rightEyeAperture ?? 0 }
-
-        winkCalibrationManager.onComplete = { [weak self] result in
-            guard let self else { return }
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.appState.winkClosedThreshold = result.closedThreshold
-                self.appState.winkOpenThreshold = result.openThreshold
-                self.appState.minWinkDuration = result.minWinkDuration
-                self.appState.maxWinkDuration = result.maxWinkDuration
-                self.appState.bilateralRejectWindow = result.bilateralRejectWindow
-                self.appState.winkCalibrationValid = true
-                self.appState.persistSettings()
-                self.dismissWinkCalibration()
-            }
-        }
-
-        winkCalibrationManager.onCancel = { [weak self] in
-            self?.dismissWinkCalibration()
-        }
-
-        appState.showWinkCalibration = true
-        showWinkCalibrationWindow()
-    }
-
-    private func showWinkCalibrationWindow() {
-        guard winkCalibrationWindow == nil else { return }
-
-        let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: 340),
-            styleMask: [.nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-        panel.level = .floating
-        panel.hasShadow = false
-        panel.backgroundColor = .clear
-        panel.isOpaque = false
-        panel.isReleasedWhenClosed = false
-        panel.center()
-
-        let view = WinkCalibrationView(manager: winkCalibrationManager)
-        panel.contentView = NSHostingView(rootView: view)
-
-        panel.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-        winkCalibrationWindow = panel
-    }
-
-    func dismissWinkCalibration() {
-        winkCalibrationWindow?.close()
-        winkCalibrationWindow = nil
-        appState.showWinkCalibration = false
     }
 
     deinit {

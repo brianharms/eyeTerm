@@ -72,10 +72,6 @@ final class AppState {
     // MARK: - Window Actions
     var windowActionsEnabled: Bool = true
 
-    // MARK: - Wink Calibration
-    var showWinkCalibration: Bool = false
-    var winkCalibrationValid: Bool = false
-
     // MARK: - Blink Gestures
     var blinkGesturesEnabled: Bool = true
     var winkClosedThreshold: Double = 0.15
@@ -91,6 +87,7 @@ final class AppState {
     var leftEyeAperture: Double = 0
     var rightEyeAperture: Double = 0
     var lastWinkEvent: WinkEvent?
+    var winkDiagnosticLog: [WinkDiagnosticEvent] = []
 
     // MARK: - Transcription History
     var partialTranscription: String = ""
@@ -128,6 +125,13 @@ final class AppState {
 
     func clearErrors() {
         errors.removeAll()
+    }
+
+    func appendWinkDiagnostic(_ event: WinkDiagnosticEvent) {
+        winkDiagnosticLog.append(event)
+        if winkDiagnosticLog.count > 8 {
+            winkDiagnosticLog.removeFirst(winkDiagnosticLog.count - 8)
+        }
     }
 
     /// Writes current tunable settings to a JSON file in the project source tree.
@@ -181,7 +185,6 @@ final class AppState {
             "showDictationDisplay": showDictationDisplay,
             "showWinkOverlay": showWinkOverlay,
             "showCommandFlash": showCommandFlash,
-            "winkCalibrationValid": winkCalibrationValid,
         ]
 
         guard let data = try? JSONSerialization.data(withJSONObject: settings, options: [.prettyPrinted, .sortedKeys]) else { return }
@@ -251,7 +254,6 @@ final class AppState {
             "showDictationDisplay": showDictationDisplay,
             "showWinkOverlay": showWinkOverlay,
             "showCommandFlash": showCommandFlash,
-            "winkCalibrationValid": winkCalibrationValid,
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: settings, options: [.prettyPrinted, .sortedKeys]) else { return }
         try? data.write(to: Self.settingsFileURL)
@@ -307,7 +309,6 @@ final class AppState {
         if let v = dict["showDictationDisplay"] as? Bool { showDictationDisplay = v }
         if let v = dict["showWinkOverlay"] as? Bool { showWinkOverlay = v }
         if let v = dict["showCommandFlash"] as? Bool { showCommandFlash = v }
-        if let v = dict["winkCalibrationValid"] as? Bool { winkCalibrationValid = v }
     }
 }
 
