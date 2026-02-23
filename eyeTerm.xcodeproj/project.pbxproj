@@ -31,12 +31,14 @@
 		7855E577DD5F72BC3447D8FB /* WhisperCppBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22AB2B33B94D0C90352E7773 /* WhisperCppBackend.swift */; };
 		878D4C13CA36B4F2DEAC543A /* saved-defaults.json in Resources */ = {isa = PBXBuildFile; fileRef = A4877E19FED1F5693E7DA064 /* saved-defaults.json */; };
 		8B4FE7D9C0076E5FDAA48FD6 /* VoiceTranscriptionBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00EE7448FBA6327EEFAA1E10 /* VoiceTranscriptionBackend.swift */; };
+		8E33CB2283862F605C363274 /* MediaPipeSetupManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC597003EE3C0096B7F1C2E6 /* MediaPipeSetupManager.swift */; };
 		95800E445E4B14218E51EB80 /* CalibrationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19196893580AA6C45479E3A0 /* CalibrationManager.swift */; };
 		99C3F6ED34279E30E736CD46 /* AppCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 387B6DDEA397FF964D2B3CEE /* AppCoordinator.swift */; };
 		9FD2EBE0294918F81CD95406 /* EyeEstimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA0EAED16B66DC727CC7B10D /* EyeEstimator.swift */; };
 		A07944F32FE891DC7315DFC7 /* WindowLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92BBD65947878E27393008A2 /* WindowLayout.swift */; };
 		A121D07B39BF8E14B5C03D1C /* WalkthroughWelcomeStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36C77FE88B193AE70C02A462 /* WalkthroughWelcomeStep.swift */; };
 		A55AB41834993D832BA303B3 /* AudioWaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 811B834E1D2F8DAB0E303F5B /* AudioWaveformView.swift */; };
+		A599C23B5B916E125335BFA9 /* MediaPipeSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41C5F3C5AD6CE43C62FA47DF /* MediaPipeSetupView.swift */; };
 		ABC57BB39E19C1A5E5409759 /* WalkthroughReadyStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8C24F3C61BF2B31B7D6F653 /* WalkthroughReadyStep.swift */; };
 		B19FD69739FF4A21172DF214 /* MediaPipeBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D705FB322AA5DF51AFB5CA3 /* MediaPipeBackend.swift */; };
 		B2548DFF60D29E9704F8A6CE /* Permissions.swift in Sources */ = {isa = PBXBuildFile; fileRef = D836DDC377E4359724D747C5 /* Permissions.swift */; };
@@ -71,6 +73,7 @@
 		3B633A8E5AD8A95181449A1B /* WindowActionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowActionManager.swift; sourceTree = "<group>"; };
 		3DB97887933E2FBE0F8D931C /* eyeTerm.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = eyeTerm.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3F4F4D8AEC89DDDF0B0772DE /* StreamingTranscriptionDiffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingTranscriptionDiffer.swift; sourceTree = "<group>"; };
+		41C5F3C5AD6CE43C62FA47DF /* MediaPipeSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaPipeSetupView.swift; sourceTree = "<group>"; };
 		55764B0C11E733EF0C9B98B6 /* StatusIndicatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusIndicatorView.swift; sourceTree = "<group>"; };
 		60AE3E31E95DD10E47EB4303 /* ScreenQuadrant.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenQuadrant.swift; sourceTree = "<group>"; };
 		678072609816BD61C3C33DE2 /* CommandParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandParser.swift; sourceTree = "<group>"; };
@@ -104,6 +107,7 @@
 		E8C24F3C61BF2B31B7D6F653 /* WalkthroughReadyStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkthroughReadyStep.swift; sourceTree = "<group>"; };
 		ECCA4DEC47BDAE22F003D57A /* VoiceAudioPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceAudioPipeline.swift; sourceTree = "<group>"; };
 		ED398BA8E1104FF3EA6FDB1E /* EyeTrackingBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EyeTrackingBackend.swift; sourceTree = "<group>"; };
+		FC597003EE3C0096B7F1C2E6 /* MediaPipeSetupManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaPipeSetupManager.swift; sourceTree = "<group>"; };
 		FDCAACAF9465DA49C464AC38 /* WinkCalibrationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WinkCalibrationView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -176,6 +180,7 @@
 				C8380FF7D44CA93643D1E360 /* CameraPreviewView.swift */,
 				84D4C0776BA6D90F9E7C7F2C /* ErrorDetailView.swift */,
 				96D586726F5F1F38E47FC288 /* EyeOverlayView.swift */,
+				41C5F3C5AD6CE43C62FA47DF /* MediaPipeSetupView.swift */,
 				1BBE99F9725303AD3EC8AB2A /* MenuBarView.swift */,
 				A05FD792E7E2FE9ABDCF9EB8 /* OverlayMode.swift */,
 				7660980D3A8CB84F2FA144DA /* SettingsView.swift */,
@@ -254,6 +259,7 @@
 			children = (
 				371B7436B6CD4BA712BE89D2 /* BlinkGestureDetector.swift */,
 				C9AA2CDC1E27588BD0C577F1 /* DwellTimer.swift */,
+				FC597003EE3C0096B7F1C2E6 /* MediaPipeSetupManager.swift */,
 				D836DDC377E4359724D747C5 /* Permissions.swift */,
 				3B633A8E5AD8A95181449A1B /* WindowActionManager.swift */,
 				888C08894EE417A8FEF2CC9D /* WinkCalibrationManager.swift */,
@@ -394,6 +400,8 @@
 				58308910651361E88F4265A6 /* EyeTracker.swift in Sources */,
 				21E42590DEEE0AD4D6380AA9 /* EyeTrackingBackend.swift in Sources */,
 				B19FD69739FF4A21172DF214 /* MediaPipeBackend.swift in Sources */,
+				8E33CB2283862F605C363274 /* MediaPipeSetupManager.swift in Sources */,
+				A599C23B5B916E125335BFA9 /* MediaPipeSetupView.swift in Sources */,
 				CE3ED8147CA8DEA41745A75E /* MenuBarView.swift in Sources */,
 				2FD5635F3649CC705B35AFF2 /* OnboardingState.swift in Sources */,
 				33A4E80F68597EFAC64BE843 /* OverlayMode.swift in Sources */,

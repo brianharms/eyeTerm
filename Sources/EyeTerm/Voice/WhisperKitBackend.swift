@@ -132,7 +132,14 @@ final class WhisperKitBackend: VoiceTranscriptionBackend {
         interimTask = Task { [weak self] in
             defer { self?.isTranscribing = false }
             do {
-                let results = try await whisperKit.transcribe(audioArray: audio)
+                let results = try await whisperKit.transcribe(audioArray: audio, callback: { [weak self] progress in
+                    guard let self, !Task.isCancelled else { return false }
+                    let partial = progress.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !partial.isEmpty {
+                        DispatchQueue.main.async { self.onPartialTranscription?(partial) }
+                    }
+                    return nil // continue decoding
+                })
                 let text = results.compactMap(\.text).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
                 print("[WhisperKitBackend] Interim result: \"\(text)\"")
                 guard !text.isEmpty, !Task.isCancelled else { return }

@@ -31,6 +31,9 @@ final class MediaPipeBackend: EyeTrackingBackend {
     /// Camera preview session (display only — MediaPipe Python process does actual tracking).
     var activeCaptureSession: AVCaptureSession? { previewSession }
 
+    /// Optional path to a venv Python executable. When set, used directly instead of `env python3`.
+    var pythonExecutable: String? = nil
+
     private var process: Process?
     private var stdoutPipe: Pipe?
     private var emaFilter = EyeTermEMAFilter()
@@ -77,8 +80,13 @@ final class MediaPipeBackend: EyeTrackingBackend {
         ]
 
         let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        proc.arguments = ["python3", "-u", scriptPath]
+        if let venvPython = pythonExecutable {
+            proc.executableURL = URL(fileURLWithPath: venvPython)
+            proc.arguments = ["-u", scriptPath]
+        } else {
+            proc.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            proc.arguments = ["python3", "-u", scriptPath]
+        }
 
         let pipe = Pipe()
         let stderrPipe = Pipe()

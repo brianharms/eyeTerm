@@ -1,0 +1,19 @@
+{
+  "title": "Eye Term",
+  "description": null,
+  "screenshot": null,
+  "icon": "Sources/EyeTerm/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
+  "platform": "ios",
+  "category": "app",
+  "tech": [
+    "Swift",
+    "Python"
+  ],
+  "status": "active",
+  "featured": false,
+  "color": "#F05138",
+  "links": {
+    "live": null,
+    "figma": null
+  }
+}

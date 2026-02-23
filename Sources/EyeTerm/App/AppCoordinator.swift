@@ -28,6 +28,8 @@ final class AppCoordinator {
     private var deviceChangeListenerRegistered = false
 
     private(set) var winkCalibrationManager = WinkCalibrationManager()
+    let mediaPipeSetupManager = MediaPipeSetupManager()
+    private var mediaPipeSetupWindow: NSPanel?
 
     // Debug visualization smoothers (separate from pipeline smoothing)
     private var debugHeadFilter = EyeTermEMAFilter(alpha: 0.15)
@@ -505,6 +507,10 @@ final class AppCoordinator {
     // MARK: - Eye Tracking
 
     func startEyeTracking() {
+        // For MediaPipe, ensure venv python is wired in if setup already ran.
+        if activeBackend is MediaPipeBackend {
+            applyMediaPipePython()
+        }
         do {
             try activeBackend.start()
             appState.isEyeTrackingActive = true
@@ -1038,9 +1044,71 @@ final class AppCoordinator {
         onboardingWindow = nil
     }
 
+    // MARK: - MediaPipe Setup
+
+    func startMediaPipeWithSetup() {
+        guard !mediaPipeSetupManager.isReady else {
+            applyMediaPipePython()
+            startEyeTracking()
+            return
+        }
+        showMediaPipeSetupWindow()
+        mediaPipeSetupManager.checkOrInstall()
+    }
+
+    private func applyMediaPipePython() {
+        if let mpBackend = activeBackend as? MediaPipeBackend,
+           let path = mediaPipeSetupManager.pythonExecutablePath {
+            mpBackend.pythonExecutable = path
+        }
+    }
+
+    func showMediaPipeSetupWindow() {
+        guard mediaPipeSetupWindow == nil else { return }
+
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 440, height: 320),
+            styleMask: [.nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        panel.level = .floating
+        panel.hasShadow = false
+        panel.backgroundColor = .clear
+        panel.isOpaque = false
+        panel.isReleasedWhenClosed = false
+        panel.center()
+
+        let view = MediaPipeSetupView(
+            manager: mediaPipeSetupManager,
+            onDismiss: { [weak self] in
+                self?.applyMediaPipePython()
+                self?.dismissMediaPipeSetup()
+                self?.startEyeTracking()
+            },
+            onUseAppleVision: { [weak self] in
+                self?.dismissMediaPipeSetup()
+                self?.switchBackend(to: .appleVision)
+            }
+        )
+        panel.contentView = NSHostingView(rootView: view)
+        panel.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        mediaPipeSetupWindow = panel
+    }
+
+    func dismissMediaPipeSetup() {
+        mediaPipeSetupWindow?.close()
+        mediaPipeSetupWindow = nil
+    }
+
     // MARK: - Wink Calibration
 
     func startWinkCalibration() {
+        guard appState.isEyeTrackingActive else {
+            appState.addError("Eye tracking must be active to calibrate wink thresholds. Start eye tracking first.")
+            return
+        }
         winkCalibrationManager = WinkCalibrationManager()
         winkCalibrationManager.getLeftAperture = { [weak self] in self?.appState.leftEyeAperture ?? 0 }
         winkCalibrationManager.getRightAperture = { [weak self] in self?.appState.rightEyeAperture ?? 0 }

@@ -7,6 +7,7 @@ struct WalkthroughPermissionStep: View {
     let check: () -> PermissionStatus
     let request: () async -> Void
     let isAccessibility: Bool
+    var openSettings: (() -> Void)?
     var onPermissionChanged: (() -> Void)?
 
     @State private var status: PermissionStatus = .notDetermined
@@ -40,7 +41,7 @@ struct WalkthroughPermissionStep: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             refreshStatus()
-            if isAccessibility && status != .granted {
+            if status != .granted {
                 startPolling()
             }
         }
@@ -63,11 +64,17 @@ struct WalkthroughPermissionStep: View {
                     .font(.headline)
                     .foregroundStyle(.orange)
 
-                if isAccessibility {
+                if let openSettings {
                     Button("Open System Settings") {
-                        Permissions.requestAccessibility()
+                        openSettings()
                     }
                     .buttonStyle(.borderedProminent)
+
+                    Text("After granting access, this screen will update automatically.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
                 } else {
                     Text("You can grant access later in System Settings.")
                         .font(.caption)
@@ -108,6 +115,9 @@ struct WalkthroughPermissionStep: View {
                 await MainActor.run {
                     isRequesting = false
                     refreshStatus()
+                    if status != .granted {
+                        startPolling()
+                    }
                     onPermissionChanged?()
                 }
             }
@@ -117,10 +127,18 @@ struct WalkthroughPermissionStep: View {
     private func startPolling() {
         stopPolling()
         pollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
-            if Permissions.checkAccessibility() {
+            let newStatus: PermissionStatus
+            if isAccessibility {
+                newStatus = Permissions.checkAccessibility() ? .granted : .notDetermined
+            } else {
+                newStatus = check()
+            }
+            if newStatus == .granted {
                 status = .granted
                 stopPolling()
                 onPermissionChanged?()
+            } else if newStatus != status {
+                status = newStatus
             }
         }
     }

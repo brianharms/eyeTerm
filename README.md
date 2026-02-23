@@ -24,6 +24,19 @@ Built for developers who want to work with AI coding agents (like Claude Code) w
 
 ---
 
+## Privacy
+
+eyeTerm is built with privacy as a first principle:
+
+- **Camera** — Your webcam feed is processed entirely on-device using Apple Vision (CoreML) or MediaPipe. No video is recorded, stored, or transmitted anywhere. Your camera data never leaves your Mac.
+- **Microphone** — Voice commands are transcribed locally using [WhisperKit](https://github.com/argmaxinc/WhisperKit), a CoreML/Neural Engine implementation of OpenAI Whisper. No audio is sent to any server, ever.
+- **No telemetry** — eyeTerm contains no analytics, crash reporting, or usage tracking of any kind.
+- **No network access** — The app makes no outbound network connections during normal operation. (The MediaPipe auto-setup downloads the `mediapipe` Python package from PyPI on first use only, if you choose that backend.)
+
+All processing happens on your hardware. eyeTerm does not have — and does not need — an internet connection to function.
+
+---
+
 ## Setup
 
 ### 1. Build

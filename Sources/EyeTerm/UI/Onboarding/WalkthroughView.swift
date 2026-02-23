@@ -88,10 +88,11 @@ struct WalkthroughView: View {
             WalkthroughPermissionStep(
                 iconName: "camera.fill",
                 title: "Camera Access",
-                explanation: "eyeTerm uses your camera to track where you're looking on screen. Everything is processed entirely on-device — nothing is stored or sent anywhere.",
+                explanation: "eyeTerm uses your camera to track where you look on screen. All processing happens entirely on-device using Apple's Vision framework — no video is recorded, stored, or transmitted anywhere. Your camera feed never leaves your Mac.",
                 check: { Permissions.checkCamera() },
                 request: { _ = await Permissions.requestCamera() },
                 isAccessibility: false,
+                openSettings: Permissions.openCameraSettings,
                 onPermissionChanged: { permissionRefreshToken.toggle() }
             )
 
@@ -99,10 +100,11 @@ struct WalkthroughView: View {
             WalkthroughPermissionStep(
                 iconName: "mic.fill",
                 title: "Microphone Access",
-                explanation: "Voice commands are transcribed locally using Whisper. Audio is processed on-device and never leaves your Mac.",
+                explanation: "Voice commands are transcribed locally using Whisper, a neural network that runs entirely on your Mac using the Neural Engine. No audio is recorded, sent to any server, or stored anywhere — ever.",
                 check: { Permissions.checkMicrophone() },
                 request: { _ = await Permissions.requestMicrophone() },
                 isAccessibility: false,
+                openSettings: Permissions.openMicrophoneSettings,
                 onPermissionChanged: { permissionRefreshToken.toggle() }
             )
 
@@ -114,6 +116,7 @@ struct WalkthroughView: View {
                 check: { Permissions.checkAccessibility() ? .granted : .notDetermined },
                 request: { Permissions.requestAccessibility() },
                 isAccessibility: true,
+                openSettings: Permissions.requestAccessibility,
                 onPermissionChanged: { permissionRefreshToken.toggle() }
             )
 
