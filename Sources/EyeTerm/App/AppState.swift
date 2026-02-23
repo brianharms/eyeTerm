@@ -59,9 +59,22 @@ final class AppState {
     var debugLineWidth: Double = 1.0
     var subtleEyeSize: Double = 20.0
     var subtleEyeOpacity: Double = 0.25
+    var quadrantBorderWidth: Double = 2.0
+    var showDebugBackdrop: Bool = false
+    var showDictationDisplay: Bool = false
+    var showWinkOverlay: Bool = false
+    var showCommandFlash: Bool = false
+
+    // MARK: - Wink / Command Flash Display (not persisted beyond session)
+    var lastWinkDisplay: String? = nil
+    var lastCommandFlash: String? = nil
 
     // MARK: - Window Actions
     var windowActionsEnabled: Bool = true
+
+    // MARK: - Wink Calibration
+    var showWinkCalibration: Bool = false
+    var winkCalibrationValid: Bool = false
 
     // MARK: - Blink Gestures
     var blinkGesturesEnabled: Bool = true
@@ -148,6 +161,7 @@ final class AppState {
             "showActiveState": showActiveState,
             "subtleEyeSize": subtleEyeSize,
             "subtleEyeOpacity": subtleEyeOpacity,
+            "quadrantBorderWidth": quadrantBorderWidth,
             "debugLineWidth": debugLineWidth,
             "preferredTerminal": preferredTerminal.rawValue,
             "terminalLaunchCommand": terminalLaunchCommand,
@@ -162,6 +176,11 @@ final class AppState {
             "winkCooldown": winkCooldown,
             "windowActionsEnabled": windowActionsEnabled,
             "terminalSetupMode": terminalSetupMode.rawValue,
+            "showDebugBackdrop": showDebugBackdrop,
+            "showDictationDisplay": showDictationDisplay,
+            "showWinkOverlay": showWinkOverlay,
+            "showCommandFlash": showCommandFlash,
+            "winkCalibrationValid": winkCalibrationValid,
         ]
 
         guard let data = try? JSONSerialization.data(withJSONObject: settings, options: [.prettyPrinted, .sortedKeys]) else { return }
@@ -211,6 +230,7 @@ final class AppState {
             "showActiveState": showActiveState,
             "subtleEyeSize": subtleEyeSize,
             "subtleEyeOpacity": subtleEyeOpacity,
+            "quadrantBorderWidth": quadrantBorderWidth,
             "debugLineWidth": debugLineWidth,
             "preferredTerminal": preferredTerminal.rawValue,
             "terminalLaunchCommand": terminalLaunchCommand,
@@ -225,6 +245,11 @@ final class AppState {
             "winkCooldown": winkCooldown,
             "windowActionsEnabled": windowActionsEnabled,
             "terminalSetupMode": terminalSetupMode.rawValue,
+            "showDebugBackdrop": showDebugBackdrop,
+            "showDictationDisplay": showDictationDisplay,
+            "showWinkOverlay": showWinkOverlay,
+            "showCommandFlash": showCommandFlash,
+            "winkCalibrationValid": winkCalibrationValid,
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: settings, options: [.prettyPrinted, .sortedKeys]) else { return }
         try? data.write(to: Self.settingsFileURL)
@@ -261,6 +286,7 @@ final class AppState {
         if let v = dict["showActiveState"] as? Bool { showActiveState = v }
         if let v = dict["subtleEyeSize"] as? Double { subtleEyeSize = v }
         if let v = dict["subtleEyeOpacity"] as? Double { subtleEyeOpacity = v }
+        if let v = dict["quadrantBorderWidth"] as? Double { quadrantBorderWidth = v }
         if let v = dict["debugLineWidth"] as? Double { debugLineWidth = v }
         if let v = dict["preferredTerminal"] as? String, let e = PreferredTerminal(rawValue: v) { preferredTerminal = e }
         if let v = dict["terminalLaunchCommand"] as? String { terminalLaunchCommand = v }
@@ -275,6 +301,11 @@ final class AppState {
         if let v = dict["winkCooldown"] as? Double { winkCooldown = v }
         if let v = dict["windowActionsEnabled"] as? Bool { windowActionsEnabled = v }
         if let v = dict["terminalSetupMode"] as? String, let e = TerminalSetupMode(rawValue: v) { terminalSetupMode = e }
+        if let v = dict["showDebugBackdrop"] as? Bool { showDebugBackdrop = v }
+        if let v = dict["showDictationDisplay"] as? Bool { showDictationDisplay = v }
+        if let v = dict["showWinkOverlay"] as? Bool { showWinkOverlay = v }
+        if let v = dict["showCommandFlash"] as? Bool { showCommandFlash = v }
+        if let v = dict["winkCalibrationValid"] as? Bool { winkCalibrationValid = v }
     }
 }
 

@@ -5,9 +5,10 @@ struct SettingsView: View {
     @Environment(AppCoordinator.self) private var coordinator
 
     @State private var showDescriptions = false
+    @FocusState private var customKeywordFocused: Bool
 
     private let whisperModels = ["tiny.en", "base.en", "small.en", "medium.en"]
-    private let keywordPresets = ["run it", "go ahead", "do it"]
+    private let keywordPresets = ["run it", "go ahead", "do it", "execute"]
 
     var body: some View {
         @Bindable var state = appState
@@ -291,8 +292,41 @@ struct SettingsView: View {
                 described("Show a colored border around the focused quadrant in the overlay.") {
                     Toggle("Quadrant Highlighting", isOn: $state.showQuadrantHighlighting)
                 }
+                described("Thickness of the focused quadrant border — applies to both Subtle and Debug overlays.") {
+                    LabeledContent("Border Thickness") {
+                        HStack {
+                            Text("Thin")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Slider(value: $state.quadrantBorderWidth, in: 0.5...8.0, step: 0.5)
+                            Text("Thick")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
                 described("Show a visual indicator when eye tracking is active or loading.") {
                     Toggle("Active / Loading State", isOn: $state.showActiveState)
+                }
+
+                described("Adds a dark grey screen backdrop behind the debug overlay — makes gaze dots easier to see.") {
+                    Toggle("Dark Backdrop", isOn: $state.showDebugBackdrop)
+                        .disabled(state.overlayMode != .debug)
+                }
+
+                described("Shows live dictated text in large font at the bottom of the screen while speaking.") {
+                    Toggle("Live Dictation Display", isOn: $state.showDictationDisplay)
+                        .disabled(state.overlayMode != .debug)
+                }
+
+                described("Flashes a label on screen whenever a wink gesture fires.") {
+                    Toggle("Wink Visualization", isOn: $state.showWinkOverlay)
+                        .disabled(state.overlayMode != .debug)
+                }
+
+                described("Flashes a label on screen when an execute or window action command is dispatched.") {
+                    Toggle("Command Flash", isOn: $state.showCommandFlash)
+                        .disabled(state.overlayMode != .debug)
                 }
             }
 
@@ -344,7 +378,9 @@ struct SettingsView: View {
                                     keywordPresets.contains(state.executeKeyword) ? state.executeKeyword : "__custom__"
                                 },
                                 set: { newValue in
-                                    if newValue != "__custom__" {
+                                    if newValue == "__custom__" {
+                                        state.executeKeyword = ""
+                                    } else {
                                         state.executeKeyword = newValue
                                     }
                                 }
@@ -360,6 +396,12 @@ struct SettingsView: View {
                                 TextField("Custom keyword", text: $state.executeKeyword)
                                     .textFieldStyle(.roundedBorder)
                                     .frame(width: 160)
+                                    .focused($customKeywordFocused)
+                                    .onChange(of: state.executeKeyword) { _, newValue in
+                                        if newValue == "" {
+                                            customKeywordFocused = true
+                                        }
+                                    }
                             }
                         }
                     }
@@ -502,6 +544,21 @@ struct SettingsView: View {
                 settingHint("Real-time eye openness. Watch these while winking to dial in thresholds.")
 
                 WinkIndicatorView(lastWinkEvent: state.lastWinkEvent)
+
+                LabeledContent("Auto-Calibrate") {
+                    Button {
+                        coordinator.startWinkCalibration()
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text("Calibrate Winks")
+                            if state.winkCalibrationValid {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(.green)
+                            }
+                        }
+                    }
+                }
+                settingHint("Guided wizard that measures your actual eye aperture and computes optimal thresholds.")
             }
 
             Section("Transcription Log") {

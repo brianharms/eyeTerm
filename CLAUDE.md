@@ -70,6 +70,14 @@ Settings live as properties on `AppState` (an `@Observable` class). `AppCoordina
 
 ## Recent Work (Feb 2026)
 
+### Session 8 — Feb 22
+
+- **Settings window always-on-top**: `NSWindow.didBecomeKeyNotification` / `NSWindow.didResignKeyNotification` observers in `AppCoordinator` elevate any non-overlay window to `.floating` while it's key, reset to `.normal` on resign. Fixes Settings panel falling behind the full-screen overlay.
+- **Wink flash repositioned**: Moved from quadrant center (`focusedRect.midY`) to 75px below the top edge (`focusedRect.minY + 75`) — less obstructive, easier to glance at.
+- **Dictation anchored to active quadrant**: Partial transcription text now appears at bottom-center of the focused quadrant (`focusedRect.midX, focusedRect.maxY - 80`) instead of global screen bottom-center.
+- **Garble-free dictation display**: WhisperKit emits partial token fragments mid-inference. Fixed in display layer only by dropping the trailing in-progress token before rendering — `words.dropLast()`. The data pipeline (StreamingTranscriptionDiffer) still receives the full text.
+- **Wink calibration wizard**: Guided 7-step flow that auto-computes optimal wink thresholds from the user's actual eye aperture. Steps: intro → eyes open (60 frames) → eyes closed (60 frames) → natural blinks (5) → left wink practice (3) → right wink practice (3) → results. Computes `winkClosedThreshold` (p50 of closed samples), `winkOpenThreshold` (p75 of open samples), `minWinkDuration` / `maxWinkDuration` from practice winks, `bilateralRejectWindow` from blink durations. Writes directly to AppState + persists to Application Support. Accessible via Settings → Wink Gestures → "Calibrate Winks" button (shows green checkmark badge after first successful calibration).
+
 ### Session 7 — Feb 21
 - **Voice-controlled window management**: Say "close it", "minimize", "hide", "go back", "go forward", "reload" to act on non-terminal windows. Terminal windows (iTerm2/Terminal.app) are protected — phrases pass through as text when terminal is frontmost. Refocuses terminal quadrant after action.
 - **Wink gestures**: Deliberate one-eye winks trigger terminal actions (left wink = double escape, right wink = enter). Bilateral reject window filters natural blinks. Configurable thresholds, durations, cooldowns in Settings.
@@ -100,6 +108,11 @@ See `SESSION_LOG.md` for detailed per-session changelogs covering: camera overla
 - Repo: https://github.com/brianharms/eyeTerm (private)
 - Branch: `main`
 
-## Future Ideas
+## Next Steps / Future Ideas
+- **Wink calibration persistence across machines**: `winkCalibrationValid` persists locally but the computed thresholds should also be exportable/importable as a profile for users with multiple Macs.
+- **Calibration quality indicator**: After wink calibration, show a live "confidence" score in the Wink Gestures section based on the gap between open/closed thresholds — a narrow gap means unreliable detection.
+- **Wink calibration re-entry guard**: If the user opens the calibration wizard while eye tracking is inactive, the aperture closures return 0. Should check `appState.isEyeTrackingActive` and show a warning if tracking is off.
 - **L2CS-Net CoreML backend**: Third tracking backend, fully native (no Python/C++). Predicts gaze yaw/pitch from single webcam frame. See `SESSION_LOG.md` TODO section.
-- **SFSpeechRecognizer**: Apple's built-in speech recognition as a third voice backend option — lower latency, no model download, but less accurate than WhisperKit
+- **SFSpeechRecognizer**: Apple's built-in speech recognition as a third voice backend option — lower latency, no model download, but less accurate than WhisperKit.
+- **Dictation display fade animation**: Partial transcription currently pops in/out. A short fade-in + fade-out on `displayText` changes would feel much more polished.
+- **Per-quadrant terminal state**: Track which terminal is in each quadrant (name, current directory) and display it in the overlay as a subtle label.

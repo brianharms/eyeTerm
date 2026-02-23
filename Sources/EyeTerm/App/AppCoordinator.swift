@@ -24,7 +24,10 @@ final class AppCoordinator {
     private var cameraPreviewWindow: NSPanel?
     private var errorDetailsWindow: NSPanel?
     private var waveformWindow: NSPanel?
+    private var winkCalibrationWindow: NSPanel?
     private var deviceChangeListenerRegistered = false
+
+    private(set) var winkCalibrationManager = WinkCalibrationManager()
 
     // Debug visualization smoothers (separate from pipeline smoothing)
     private var debugHeadFilter = EyeTermEMAFilter(alpha: 0.15)
@@ -52,6 +55,7 @@ final class AppCoordinator {
         observeSettings()
         refreshMicList()
         registerDeviceChangeListener()
+        setupWindowLevelObservers()
 
         if !OnboardingState.hasCompleted {
             DispatchQueue.main.async { [weak self] in
@@ -154,6 +158,12 @@ final class AppCoordinator {
                     let isProtected = await self.windowActionManager.isFrontmostProtected()
                     if !isProtected {
                         print("[AppCoordinator] Window action: \(windowAction.rawValue)")
+                        if self.appState.showCommandFlash {
+                            self.appState.lastCommandFlash = windowAction.rawValue.uppercased()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                                self.appState.lastCommandFlash = nil
+                            }
+                        }
                         try? await self.windowActionManager.execute(windowAction)
                         if let quadrant = self.appState.focusedQuadrant, self.terminalManager.isSetup {
                             try? await self.terminalManager.focusTerminal(quadrant: quadrant)
@@ -286,6 +296,12 @@ final class AppCoordinator {
                         }
                     case .execute:
                         print("[AppCoordinator] Sending Return")
+                        if self.appState.showCommandFlash {
+                            self.appState.lastCommandFlash = "EXECUTE ↵"
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                                self.appState.lastCommandFlash = nil
+                            }
+                        }
                         try await self.terminalManager.sendReturn(in: quadrant)
                     }
                 } catch {
@@ -303,6 +319,12 @@ final class AppCoordinator {
             let action = self.appState.leftWinkAction
             self.appState.lastWinkEvent = WinkEvent(side: .left, action: action, timestamp: Date())
             print("[AppCoordinator] Left wink → \(action.shortLabel)")
+            if self.appState.showWinkOverlay {
+                self.appState.lastWinkDisplay = "← ESC"
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    self.appState.lastWinkDisplay = nil
+                }
+            }
             self.executeWinkAction(action)
         }
         blinkDetector.onRightWink = { [weak self] in
@@ -310,6 +332,12 @@ final class AppCoordinator {
             let action = self.appState.rightWinkAction
             self.appState.lastWinkEvent = WinkEvent(side: .right, action: action, timestamp: Date())
             print("[AppCoordinator] Right wink → \(action.shortLabel)")
+            if self.appState.showWinkOverlay {
+                self.appState.lastWinkDisplay = "→ ENTER"
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    self.appState.lastWinkDisplay = nil
+                }
+            }
             self.executeWinkAction(action)
         }
     }
@@ -660,6 +688,32 @@ final class AppCoordinator {
         showCalibrationOverlay()
     }
 
+    // MARK: - Window Level
+
+    private func setupWindowLevelObservers() {
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self,
+                  let window = notification.object as? NSWindow,
+                  window !== self.eyeTermOverlayWindow else { return }
+            window.level = .floating
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didResignKeyNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self,
+                  let window = notification.object as? NSWindow,
+                  window !== self.eyeTermOverlayWindow else { return }
+            window.level = .normal
+        }
+    }
+
     // MARK: - Overlay Mode
 
     func cycleOverlayMode() {
@@ -982,6 +1036,63 @@ final class AppCoordinator {
     func dismissOnboarding() {
         onboardingWindow?.close()
         onboardingWindow = nil
+    }
+
+    // MARK: - Wink Calibration
+
+    func startWinkCalibration() {
+        winkCalibrationManager = WinkCalibrationManager()
+        winkCalibrationManager.getLeftAperture = { [weak self] in self?.appState.leftEyeAperture ?? 0 }
+        winkCalibrationManager.getRightAperture = { [weak self] in self?.appState.rightEyeAperture ?? 0 }
+
+        winkCalibrationManager.onComplete = { [weak self] result in
+            guard let self else { return }
+            appState.winkClosedThreshold = result.closedThreshold
+            appState.winkOpenThreshold = result.openThreshold
+            appState.minWinkDuration = result.minWinkDuration
+            appState.maxWinkDuration = result.maxWinkDuration
+            appState.bilateralRejectWindow = result.bilateralRejectWindow
+            appState.winkCalibrationValid = true
+            appState.persistSettings()
+            dismissWinkCalibration()
+        }
+
+        winkCalibrationManager.onCancel = { [weak self] in
+            self?.dismissWinkCalibration()
+        }
+
+        appState.showWinkCalibration = true
+        showWinkCalibrationWindow()
+    }
+
+    private func showWinkCalibrationWindow() {
+        guard winkCalibrationWindow == nil else { return }
+
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 340),
+            styleMask: [.nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        panel.level = .floating
+        panel.hasShadow = false
+        panel.backgroundColor = .clear
+        panel.isOpaque = false
+        panel.isReleasedWhenClosed = false
+        panel.center()
+
+        let view = WinkCalibrationView(manager: winkCalibrationManager)
+        panel.contentView = NSHostingView(rootView: view)
+
+        panel.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        winkCalibrationWindow = panel
+    }
+
+    func dismissWinkCalibration() {
+        winkCalibrationWindow?.close()
+        winkCalibrationWindow = nil
+        appState.showWinkCalibration = false
     }
 }
 

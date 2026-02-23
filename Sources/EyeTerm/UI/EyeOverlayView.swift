@@ -54,7 +54,7 @@ private struct SubtleOverlayContent: View {
             if isFocused && appState.showQuadrantHighlighting {
                 let rect = quadrantRect(quadrant, midX: midX, midY: midY)
                 Rectangle()
-                    .strokeBorder(.green.opacity(0.85), lineWidth: 2)
+                    .strokeBorder(.green.opacity(0.85), lineWidth: appState.quadrantBorderWidth)
                     .frame(width: rect.width, height: rect.height)
                     .position(x: rect.midX, y: rect.midY)
                     .animation(.easeOut(duration: 0.2), value: isFocused)
@@ -81,6 +81,13 @@ private struct DebugOverlayContent: View {
     var body: some View {
         let midX = size.width / 2
         let midY = size.height / 2
+
+        // Dark backdrop layer (5a)
+        if appState.showDebugBackdrop {
+            Color(white: 0.15)
+                .ignoresSafeArea()
+        }
+
         let rawX = appState.rawEyePoint.x * size.width
         let rawY = appState.rawEyePoint.y * size.height
         let calX = appState.calibratedEyePoint.x * size.width
@@ -104,7 +111,7 @@ private struct DebugOverlayContent: View {
                         .position(x: rect.midX, y: rect.midY)
                         .animation(.easeOut(duration: 0.2), value: isFocused)
                     Rectangle()
-                        .strokeBorder(.cyan.opacity(0.4), lineWidth: 2)
+                        .strokeBorder(.cyan.opacity(0.4), lineWidth: appState.quadrantBorderWidth)
                         .frame(width: rect.width, height: rect.height)
                         .position(x: rect.midX, y: rect.midY)
                         .animation(.easeOut(duration: 0.2), value: isFocused)
@@ -303,6 +310,63 @@ private struct DebugOverlayContent: View {
         .padding(8)
         .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 6))
         .position(x: 100, y: 180)
+
+        // Live dictation display (5b) — filtered to complete words, inside focused quadrant
+        if appState.showDictationDisplay {
+            let words = appState.partialTranscription.components(separatedBy: " ")
+            let displayText = words.count > 1 ? words.dropLast().joined(separator: " ") : ""
+            if !displayText.isEmpty {
+                let dictRect: CGRect = {
+                    if let q = appState.focusedQuadrant {
+                        return quadrantRect(q, midX: midX, midY: midY)
+                    }
+                    return CGRect(x: 0, y: 0, width: size.width, height: size.height)
+                }()
+                Text(displayText)
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 12))
+                    .position(x: dictRect.midX, y: dictRect.maxY - 80)
+            }
+        }
+
+        // Wink action visualization (5c)
+        if appState.showWinkOverlay, let winkText = appState.lastWinkDisplay {
+            let focusedRect: CGRect = {
+                if let q = appState.focusedQuadrant {
+                    return quadrantRect(q, midX: midX, midY: midY)
+                }
+                return CGRect(x: 0, y: 0, width: size.width, height: size.height)
+            }()
+            Text(winkText)
+                .font(.system(size: 32, weight: .bold))
+                .foregroundStyle(Color.orange)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 10))
+                .position(x: focusedRect.midX, y: focusedRect.minY + 75)
+                .animation(.easeOut(duration: 0.8), value: winkText)
+        }
+
+        // Command flash visualization (5d)
+        if appState.showCommandFlash, let flashText = appState.lastCommandFlash {
+            let focusedRect: CGRect = {
+                if let q = appState.focusedQuadrant {
+                    return quadrantRect(q, midX: midX, midY: midY)
+                }
+                return CGRect(x: 0, y: 0, width: size.width, height: size.height)
+            }()
+            Text(flashText)
+                .font(.system(size: 32, weight: .bold))
+                .foregroundStyle(Color.green)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 10))
+                .position(x: focusedRect.midX, y: focusedRect.midY + 60)
+                .animation(.easeOut(duration: 0.8), value: flashText)
+        }
     }
 
     private func quadrantRect(_ quadrant: ScreenQuadrant, midX: CGFloat, midY: CGFloat) -> CGRect {
