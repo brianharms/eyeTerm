@@ -67,7 +67,6 @@ final class CommandParser {
         ("dot", "."),
         ("hash", "#"),
         ("pound", "#"),
-        ("at", "@"),
     ]
 
     func parse(_ transcription: String) -> [ParsedCommand] {

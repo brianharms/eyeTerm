@@ -28,6 +28,7 @@ final class BlinkGestureDetector {
     private var rightState: EyeState = .open
     private var lastWinkTime: Date?
     private var bilateralRejected = false
+    private var bilateralRejectedSince: Date? = nil
 
     /// Track the other eye's minimum aperture while one eye is closing/closed.
     /// If the other eye dips below openThreshold at any point, it's a blink, not a wink.
@@ -69,12 +70,20 @@ final class BlinkGestureDetector {
         if case .closing(let lSince) = leftState, case .closing(let rSince) = rightState {
             if abs(lSince.timeIntervalSince(rSince)) < bilateralRejectWindow {
                 bilateralRejected = true
+                bilateralRejectedSince = now
             }
         }
 
         // Reset bilateral flag when both eyes return to open
+        // Also expire the flag after maxWinkDuration * 2 to prevent permanent lock
+        if bilateralRejected, let since = bilateralRejectedSince,
+           now.timeIntervalSince(since) > maxWinkDuration * 2 {
+            bilateralRejected = false
+            bilateralRejectedSince = nil
+        }
         if case .open = leftState, case .open = rightState {
             bilateralRejected = false
+            bilateralRejectedSince = nil
         }
 
         // Detect wink: eye transitions from closed → open
@@ -99,6 +108,7 @@ final class BlinkGestureDetector {
         rightState = .open
         lastWinkTime = nil
         bilateralRejected = false
+        bilateralRejectedSince = nil
         otherEyeMinDuringLeftClose = 1.0
         otherEyeMinDuringRightClose = 1.0
     }

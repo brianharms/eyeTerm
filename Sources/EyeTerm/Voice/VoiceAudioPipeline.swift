@@ -18,6 +18,9 @@ final class VoiceAudioPipeline {
     private var silenceStart: Date?
     private var lastInterimEmit: Date?
 
+    // Serial queue that owns all VAD state mutations and callback dispatch.
+    private let vadQueue = DispatchQueue(label: "com.eyeterm.vad", qos: .userInitiated)
+
     func start() async throws {
         guard !isRunning else { return }
 
@@ -71,6 +74,8 @@ final class VoiceAudioPipeline {
 
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] pcmBuffer, _ in
             guard let self else { return }
+
+            // Perform sample extraction on the audio thread — no allocations beyond the array.
             let samples: [Float]
             if let converter {
                 let frameCapacity = AVAudioFrameCount(
@@ -97,8 +102,16 @@ final class VoiceAudioPipeline {
             } else {
                 samples = self.extractSamples(from: pcmBuffer)
             }
-            self.bufferManager.append(samples)
-            self.processVAD(samples: samples)
+
+            // RMS is cheap and allocation-free — compute inline so the audio-level
+            // callback gets the freshest possible value without queuing latency.
+            let rms = self.computeRMS(samples)
+
+            // All state mutation and callback invocations happen off the audio thread.
+            self.vadQueue.async {
+                self.bufferManager.append(samples)
+                self.processVAD(rms: rms, samples: samples)
+            }
         }
 
         try engine.start()
@@ -110,21 +123,29 @@ final class VoiceAudioPipeline {
         audioEngine?.inputNode.removeTap(onBus: 0)
         audioEngine?.stop()
         audioEngine = nil
-        bufferManager.clear()
+        // Dispatch state reset onto vadQueue so any in-flight async block finishes first.
+        vadQueue.async {
+            self.bufferManager.clear()
+            self.isSpeaking = false
+            self.silenceStart = nil
+            self.lastInterimEmit = nil
+        }
         isRunning = false
-        isSpeaking = false
-        silenceStart = nil
     }
 
     func flushBuffer() {
-        bufferManager.clear()
-        isSpeaking = false
-        silenceStart = nil
-        lastInterimEmit = nil
+        vadQueue.async {
+            self.bufferManager.clear()
+            self.isSpeaking = false
+            self.silenceStart = nil
+            self.lastInterimEmit = nil
+        }
     }
 
     func trimBuffer(keepLastSeconds: Double) {
-        bufferManager.trimToLast(seconds: keepLastSeconds)
+        vadQueue.async {
+            self.bufferManager.trimToLast(seconds: keepLastSeconds)
+        }
     }
 
     // MARK: - Private
@@ -135,14 +156,15 @@ final class VoiceAudioPipeline {
         return Array(UnsafeBufferPointer(start: channelData[0], count: count))
     }
 
-    private func processVAD(samples: [Float]) {
-        let rms = computeRMS(samples)
+    /// Must be called only from `vadQueue`.
+    private func processVAD(rms: Float, samples: [Float]) {
+        let threshold = silenceThreshold
 
         DispatchQueue.main.async { [weak self] in
-            self?.onAudioLevel?(rms, rms >= (self?.silenceThreshold ?? 0.01))
+            self?.onAudioLevel?(rms, rms >= threshold)
         }
 
-        if rms >= silenceThreshold {
+        if rms >= threshold {
             isSpeaking = true
             silenceStart = nil
 
@@ -176,6 +198,7 @@ final class VoiceAudioPipeline {
         return sqrt(sumOfSquares / Float(samples.count))
     }
 
+    /// Must be called only from `vadQueue`.
     private func emitSpeechSegment() {
         let audio = bufferManager.getBuffer()
         bufferManager.clear()

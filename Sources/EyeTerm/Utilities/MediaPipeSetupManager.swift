@@ -99,7 +99,8 @@ final class MediaPipeSetupManager {
     }
 
     private func runCommand(_ executable: String, args: [String]) async throws -> String {
-        try await withCheckedThrowingContinuation { continuation in
+        // Wrap the process in a continuation, then race it against a 2-minute timeout.
+        let result: String = try await withCheckedThrowingContinuation { continuation in
             let proc = Process()
             proc.executableURL = URL(fileURLWithPath: executable)
             proc.arguments = args
@@ -108,28 +109,62 @@ final class MediaPipeSetupManager {
             proc.standardOutput = outPipe
             proc.standardError = errPipe
 
+            // Use a flag so the continuation is resumed exactly once.
+            var resumed = false
+            let lock = NSLock()
+
+            func resumeOnce(_ block: () -> Void) {
+                lock.lock()
+                defer { lock.unlock() }
+                guard !resumed else { return }
+                resumed = true
+                block()
+            }
+
+            // Declare timeout task before terminationHandler so both closures can capture it.
+            var timeoutTask: DispatchWorkItem?
+            let timeout = DispatchWorkItem {
+                guard proc.isRunning else { return }
+                proc.terminate()
+                resumeOnce {
+                    continuation.resume(throwing: NSError(
+                        domain: "MediaPipeSetup",
+                        code: -1,
+                        userInfo: [NSLocalizedDescriptionKey: "Installation timed out after 2 minutes."]
+                    ))
+                }
+            }
+            timeoutTask = timeout
+
             proc.terminationHandler = { p in
+                timeoutTask?.cancel()
                 let outData = outPipe.fileHandleForReading.readDataToEndOfFile()
                 let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
                 if p.terminationStatus == 0 {
                     let output = String(data: outData, encoding: .utf8) ?? ""
-                    continuation.resume(returning: output)
+                    resumeOnce { continuation.resume(returning: output) }
                 } else {
                     let errMsg = String(data: errData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
                         ?? "Exit code \(p.terminationStatus)"
-                    continuation.resume(throwing: NSError(
-                        domain: "MediaPipeSetup",
-                        code: Int(p.terminationStatus),
-                        userInfo: [NSLocalizedDescriptionKey: errMsg]
-                    ))
+                    resumeOnce {
+                        continuation.resume(throwing: NSError(
+                            domain: "MediaPipeSetup",
+                            code: Int(p.terminationStatus),
+                            userInfo: [NSLocalizedDescriptionKey: errMsg]
+                        ))
+                    }
                 }
             }
+
+            DispatchQueue.global().asyncAfter(deadline: .now() + 120, execute: timeout)
 
             do {
                 try proc.run()
             } catch {
-                continuation.resume(throwing: error)
+                timeoutTask?.cancel()
+                resumeOnce { continuation.resume(throwing: error) }
             }
         }
+        return result
     }
 }

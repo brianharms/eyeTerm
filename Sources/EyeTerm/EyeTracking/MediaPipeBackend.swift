@@ -141,6 +141,7 @@ final class MediaPipeBackend: EyeTrackingBackend {
     func stop() {
         guard isRunning else { return }
         process?.terminate()
+        process?.waitUntilExit()
         process = nil
         stdoutPipe = nil
         isRunning = false

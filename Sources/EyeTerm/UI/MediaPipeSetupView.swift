@@ -43,7 +43,7 @@ struct MediaPipeSetupView: View {
 
                     ScrollView {
                         VStack(alignment: .leading, spacing: 4) {
-                            ForEach(manager.outputLines, id: \.self) { line in
+                            ForEach(Array(manager.outputLines.enumerated()), id: \.offset) { _, line in
                                 Text(line)
                                     .font(.system(.caption, design: .monospaced))
                                     .foregroundStyle(line.hasPrefix("✓") ? Color.green : .secondary)

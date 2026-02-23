@@ -132,6 +132,7 @@ final class AppState {
 
     /// Writes current tunable settings to a JSON file in the project source tree.
     /// Claude reads this file and patches the hardcoded defaults in AppState.swift.
+    #if DEBUG
     func saveSettingsAsDefaults() {
         let settings: [String: Any] = [
             "trackingBackend": trackingBackend.rawValue,
@@ -185,12 +186,13 @@ final class AppState {
 
         guard let data = try? JSONSerialization.data(withJSONObject: settings, options: [.prettyPrinted, .sortedKeys]) else { return }
 
-        let url = URL(fileURLWithPath: "/Users/brianharms/Desktop/Claude Projects/eyeTerm/Sources/EyeTerm/saved-defaults.json")
+        let url = URL(fileURLWithPath: NSHomeDirectory() + "/Desktop/eyeTerm-saved-defaults.json")
         try? data.write(to: url)
 
         // Also persist to Application Support so settings survive rebuilds
         persistSettings()
     }
+    #endif
 
     // MARK: - Runtime Persistence (Application Support)
 

@@ -21,7 +21,22 @@ final class WhisperKitBackend: VoiceTranscriptionBackend {
     private var whisperKit: WhisperKit?
     private var transcriptionTask: Task<Void, Never>?
     private var interimTask: Task<Void, Never>?
-    private var isTranscribing = false
+
+    // Serial queue that owns all reads and writes of `isTranscribing` and `isStopping`,
+    // eliminating the TOCTOU race between transcribe() and transcribeInterim().
+    private let stateQueue = DispatchQueue(label: "com.eyeterm.whisper.state")
+    private var _isTranscribing = false
+    private var _isStopping = false
+
+    private var isTranscribing: Bool {
+        get { stateQueue.sync { _isTranscribing } }
+        set { stateQueue.async { self._isTranscribing = newValue } }
+    }
+
+    private var isStopping: Bool {
+        get { stateQueue.sync { _isStopping } }
+        set { stateQueue.async { self._isStopping = newValue } }
+    }
 
     func start() async throws {
         guard !isRunning else { return }
@@ -46,6 +61,7 @@ final class WhisperKitBackend: VoiceTranscriptionBackend {
             throw VoiceEngineError.modelInitializationFailed(error)
         }
 
+        isStopping = false
         pipeline.silenceThreshold = silenceThreshold
         pipeline.onAudioLevel = { [weak self] level, speaking in
             self?.onAudioLevel?(level, speaking)
@@ -64,12 +80,17 @@ final class WhisperKitBackend: VoiceTranscriptionBackend {
     }
 
     func stop() {
+        // Set the stopping flag first so any in-flight Task result callbacks are suppressed.
+        isStopping = true
         transcriptionTask?.cancel()
         transcriptionTask = nil
         interimTask?.cancel()
         interimTask = nil
         isTranscribing = false
         pipeline.stop()
+        // Nullify whisperKit after cancelling tasks. The active Task captures a local
+        // strong reference to whisperKit (captured at call site below), so the inference
+        // call itself is safe to finish; we just won't process the result.
         whisperKit = nil
         isRunning = false
     }
@@ -90,7 +111,9 @@ final class WhisperKitBackend: VoiceTranscriptionBackend {
     // MARK: - Private
 
     private func transcribe(audio: [Float]) {
-        guard let whisperKit else {
+        // Capture whisperKit strongly before entering the Task so that a concurrent
+        // stop() call nullifying self.whisperKit does not affect this inference.
+        guard let wk = whisperKit else {
             print("[WhisperKitBackend] Skipping transcription: whisperKit nil")
             return
         }
@@ -98,19 +121,30 @@ final class WhisperKitBackend: VoiceTranscriptionBackend {
         let durationSec = Double(audio.count) / 16000.0
         print("[WhisperKitBackend] Transcribing \(String(format: "%.1f", durationSec))s of audio (\(audio.count) samples)...")
 
-        isTranscribing = true
+        // Atomic check+set on stateQueue to prevent TOCTOU with transcribeInterim.
+        let alreadyTranscribing = stateQueue.sync { () -> Bool in
+            if self._isTranscribing { return true }
+            self._isTranscribing = true
+            return false
+        }
+        guard !alreadyTranscribing else {
+            print("[WhisperKitBackend] Skipping transcription: already in-flight")
+            return
+        }
+
         transcriptionTask = Task { [weak self] in
             defer { self?.isTranscribing = false }
             do {
-                let results = try await whisperKit.transcribe(audioArray: audio)
+                let results = try await wk.transcribe(audioArray: audio)
                 let text = results.compactMap(\.text).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
                 print("[WhisperKitBackend] Transcription result: \"\(text)\"")
                 guard !text.isEmpty else {
                     print("[WhisperKitBackend] Empty transcription, ignoring")
                     return
                 }
+                guard let self, !self.isStopping else { return }
                 await MainActor.run {
-                    self?.onTranscription?(text)
+                    self.onTranscription?(text)
                 }
             } catch {
                 print("[WhisperKitBackend] Transcription FAILED: \(error)")
@@ -119,21 +153,31 @@ final class WhisperKitBackend: VoiceTranscriptionBackend {
     }
 
     private func transcribeInterim(audio: [Float]) {
-        guard !isTranscribing else {
+        // Atomic check+set on stateQueue to prevent TOCTOU with transcribe().
+        let shouldSkip = stateQueue.sync { () -> Bool in
+            if self._isTranscribing { return true }
+            self._isTranscribing = true
+            return false
+        }
+        guard !shouldSkip else {
             print("[WhisperKitBackend] Skipping interim: transcription in-flight")
             return
         }
-        guard let whisperKit else { return }
+
+        // Capture whisperKit strongly before entering the Task.
+        guard let wk = whisperKit else {
+            isTranscribing = false
+            return
+        }
 
         let durationSec = Double(audio.count) / 16000.0
         print("[WhisperKitBackend] Interim transcribing \(String(format: "%.1f", durationSec))s...")
 
-        isTranscribing = true
         interimTask = Task { [weak self] in
             defer { self?.isTranscribing = false }
             do {
-                let results = try await whisperKit.transcribe(audioArray: audio, callback: { [weak self] progress in
-                    guard let self, !Task.isCancelled else { return false }
+                let results = try await wk.transcribe(audioArray: audio, callback: { [weak self] progress in
+                    guard let self, !Task.isCancelled, !self.isStopping else { return false }
                     let partial = progress.text.trimmingCharacters(in: .whitespacesAndNewlines)
                     if !partial.isEmpty {
                         DispatchQueue.main.async { self.onPartialTranscription?(partial) }
@@ -143,8 +187,9 @@ final class WhisperKitBackend: VoiceTranscriptionBackend {
                 let text = results.compactMap(\.text).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
                 print("[WhisperKitBackend] Interim result: \"\(text)\"")
                 guard !text.isEmpty, !Task.isCancelled else { return }
+                guard let self, !self.isStopping else { return }
                 await MainActor.run {
-                    self?.onPartialTranscription?(text)
+                    self.onPartialTranscription?(text)
                 }
             } catch {
                 if !Task.isCancelled {

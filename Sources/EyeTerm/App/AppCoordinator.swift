@@ -26,6 +26,7 @@ final class AppCoordinator {
     private var waveformWindow: NSPanel?
     private var winkCalibrationWindow: NSPanel?
     private var deviceChangeListenerRegistered = false
+    private var deviceChangeListenerBlock: AudioObjectPropertyListenerBlock?
 
     private(set) var winkCalibrationManager = WinkCalibrationManager()
     let mediaPipeSetupManager = MediaPipeSetupManager()
@@ -162,8 +163,8 @@ final class AppCoordinator {
                         print("[AppCoordinator] Window action: \(windowAction.rawValue)")
                         if self.appState.showCommandFlash {
                             self.appState.lastCommandFlash = windowAction.rawValue.uppercased()
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                                self.appState.lastCommandFlash = nil
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                                self?.appState.lastCommandFlash = nil
                             }
                         }
                         try? await self.windowActionManager.execute(windowAction)
@@ -300,8 +301,8 @@ final class AppCoordinator {
                         print("[AppCoordinator] Sending Return")
                         if self.appState.showCommandFlash {
                             self.appState.lastCommandFlash = "EXECUTE ↵"
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                                self.appState.lastCommandFlash = nil
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                                self?.appState.lastCommandFlash = nil
                             }
                         }
                         try await self.terminalManager.sendReturn(in: quadrant)
@@ -323,8 +324,8 @@ final class AppCoordinator {
             print("[AppCoordinator] Left wink → \(action.shortLabel)")
             if self.appState.showWinkOverlay {
                 self.appState.lastWinkDisplay = "← ESC"
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                    self.appState.lastWinkDisplay = nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                    self?.appState.lastWinkDisplay = nil
                 }
             }
             self.executeWinkAction(action)
@@ -336,8 +337,8 @@ final class AppCoordinator {
             print("[AppCoordinator] Right wink → \(action.shortLabel)")
             if self.appState.showWinkOverlay {
                 self.appState.lastWinkDisplay = "→ ENTER"
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                    self.appState.lastWinkDisplay = nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                    self?.appState.lastWinkDisplay = nil
                 }
             }
             self.executeWinkAction(action)
@@ -704,6 +705,7 @@ final class AppCoordinator {
         ) { [weak self] notification in
             guard let self,
                   let window = notification.object as? NSWindow,
+                  NSApp.windows.contains(window),
                   window !== self.eyeTermOverlayWindow else { return }
             window.level = .floating
         }
@@ -715,6 +717,7 @@ final class AppCoordinator {
         ) { [weak self] notification in
             guard let self,
                   let window = notification.object as? NSWindow,
+                  NSApp.windows.contains(window),
                   window !== self.eyeTermOverlayWindow else { return }
             window.level = .normal
         }
@@ -937,14 +940,17 @@ final class AppCoordinator {
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain
         )
+        let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+            self?.refreshMicList()
+        }
         let status = AudioObjectAddPropertyListenerBlock(
             AudioObjectID(kAudioObjectSystemObject),
             &address,
-            DispatchQueue.main
-        ) { [weak self] _, _ in
-            self?.refreshMicList()
-        }
+            DispatchQueue.main,
+            block
+        )
         if status == noErr {
+            deviceChangeListenerBlock = block
             deviceChangeListenerRegistered = true
         }
     }
@@ -1115,14 +1121,17 @@ final class AppCoordinator {
 
         winkCalibrationManager.onComplete = { [weak self] result in
             guard let self else { return }
-            appState.winkClosedThreshold = result.closedThreshold
-            appState.winkOpenThreshold = result.openThreshold
-            appState.minWinkDuration = result.minWinkDuration
-            appState.maxWinkDuration = result.maxWinkDuration
-            appState.bilateralRejectWindow = result.bilateralRejectWindow
-            appState.winkCalibrationValid = true
-            appState.persistSettings()
-            dismissWinkCalibration()
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.appState.winkClosedThreshold = result.closedThreshold
+                self.appState.winkOpenThreshold = result.openThreshold
+                self.appState.minWinkDuration = result.minWinkDuration
+                self.appState.maxWinkDuration = result.maxWinkDuration
+                self.appState.bilateralRejectWindow = result.bilateralRejectWindow
+                self.appState.winkCalibrationValid = true
+                self.appState.persistSettings()
+                self.dismissWinkCalibration()
+            }
         }
 
         winkCalibrationManager.onCancel = { [weak self] in
@@ -1161,6 +1170,22 @@ final class AppCoordinator {
         winkCalibrationWindow?.close()
         winkCalibrationWindow = nil
         appState.showWinkCalibration = false
+    }
+
+    deinit {
+        if deviceChangeListenerRegistered, let block = deviceChangeListenerBlock {
+            var address = AudioObjectPropertyAddress(
+                mSelector: kAudioHardwarePropertyDevices,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            AudioObjectRemovePropertyListenerBlock(
+                AudioObjectID(kAudioObjectSystemObject),
+                &address,
+                DispatchQueue.main,
+                block
+            )
+        }
     }
 }
 

@@ -34,6 +34,9 @@ final class TerminalManager {
     /// After setup the windows are ordered so that the first created has the highest index.
     private var windowIndices: [ScreenQuadrant: Int] = [:]
 
+    /// Cache for findWindowIndex results to avoid a fresh AppleScript scan on every keystroke.
+    private var cachedWindowIndex: [ScreenQuadrant: Int] = [:]
+
     // MARK: - Setup
 
     /// Launch the preferred terminal, create four windows positioned in screen quadrants, and run the launch command in each.
@@ -41,6 +44,7 @@ final class TerminalManager {
         // Allow re-launch if windows were manually closed
         isSetup = false
         windowIndices.removeAll()
+        cachedWindowIndex.removeAll()
 
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: preferredTerminal.bundleIdentifier) else {
             throw TerminalError.terminalNotInstalled(preferredTerminal)
@@ -105,6 +109,7 @@ final class TerminalManager {
     func adoptTerminals() async throws {
         isSetup = false
         windowIndices.removeAll()
+        cachedWindowIndex.removeAll()
 
         guard NSWorkspace.shared.urlForApplication(withBundleIdentifier: preferredTerminal.bundleIdentifier) != nil else {
             throw TerminalError.terminalNotInstalled(preferredTerminal)
@@ -135,7 +140,16 @@ final class TerminalManager {
 
     /// Bring the terminal window for the given quadrant to the front by matching screen position.
     func focusTerminal(quadrant: ScreenQuadrant) async throws {
-        let index = try await findWindowIndex(for: quadrant)
+        // Try the cached index first; fall back to a fresh scan if it fails.
+        let index: Int
+        if let cached = cachedWindowIndex[quadrant] {
+            index = cached
+        } else {
+            let fresh = try await findWindowIndex(for: quadrant)
+            cachedWindowIndex[quadrant] = fresh
+            index = fresh
+        }
+
         let app = preferredTerminal.appName
         let focusScript: String
         switch preferredTerminal {
@@ -161,7 +175,7 @@ final class TerminalManager {
 
     /// Type arbitrary text into the terminal session for the given quadrant.
     func typeText(_ text: String, in quadrant: ScreenQuadrant) async throws {
-        let index = try await findWindowIndex(for: quadrant)
+        let index = try await cachedIndex(for: quadrant)
         let escaped = escapeForAppleScript(text)
         let app = preferredTerminal.appName
         let script: String
@@ -176,8 +190,10 @@ final class TerminalManager {
             """
         case .terminal:
             script = """
-                tell application "\(app)"
-                    do script "\(escaped)" in window \(index)
+                tell application "System Events"
+                    tell process "Terminal"
+                        keystroke "\(escaped)"
+                    end tell
                 end tell
             """
         }
@@ -187,7 +203,7 @@ final class TerminalManager {
     /// Send N backspace keystrokes to the terminal session for the given quadrant.
     func sendBackspaces(_ count: Int, in quadrant: ScreenQuadrant) async throws {
         guard count > 0 else { return }
-        let index = try await findWindowIndex(for: quadrant)
+        let index = try await cachedIndex(for: quadrant)
         let app = preferredTerminal.appName
         let script: String
         switch preferredTerminal {
@@ -218,7 +234,7 @@ final class TerminalManager {
 
     /// Send an Escape keystroke to the terminal session for the given quadrant.
     func sendEscape(in quadrant: ScreenQuadrant) async throws {
-        let index = try await findWindowIndex(for: quadrant)
+        let index = try await cachedIndex(for: quadrant)
         let app = preferredTerminal.appName
         let script: String
         switch preferredTerminal {
@@ -249,7 +265,7 @@ final class TerminalManager {
 
     /// Send an Enter keystroke to the terminal session for the given quadrant.
     func sendReturn(in quadrant: ScreenQuadrant) async throws {
-        let index = try await findWindowIndex(for: quadrant)
+        let index = try await cachedIndex(for: quadrant)
         let app = preferredTerminal.appName
         let script: String
         switch preferredTerminal {
@@ -288,10 +304,21 @@ final class TerminalManager {
         }
 
         windowIndices.removeAll()
+        cachedWindowIndex.removeAll()
         isSetup = false
     }
 
     // MARK: - Helpers
+
+    /// Return the cached window index for a quadrant, running a fresh scan only on a cache miss.
+    private func cachedIndex(for quadrant: ScreenQuadrant) async throws -> Int {
+        if let cached = cachedWindowIndex[quadrant] {
+            return cached
+        }
+        let index = try await findWindowIndex(for: quadrant)
+        cachedWindowIndex[quadrant] = index
+        return index
+    }
 
     /// Find the terminal window whose screen position is closest to the target quadrant.
     private func findWindowIndex(for quadrant: ScreenQuadrant) async throws -> Int {

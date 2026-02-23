@@ -352,7 +352,7 @@ final class CalibrationManager {
         pupilTransform = loadTransform(key: Self.pupilDefaultsKey)
         savedParallaxCorrX = UserDefaults.standard.double(forKey: Self.parallaxCorrXKey)
         savedParallaxCorrY = UserDefaults.standard.double(forKey: Self.parallaxCorrYKey)
-        if headTransform != nil || pupilTransform != nil {
+        if headTransform != nil && pupilTransform != nil {
             isCalibrated = true
         }
     }
