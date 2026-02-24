@@ -119,32 +119,6 @@ final class AppCoordinator {
             guard let self else { return }
             let normalized = self.commandParser.normalizeOnly(text)
             self.appState.partialTranscription = normalized
-            guard !normalized.isEmpty else { return }
-
-            guard let quadrant = self.appState.focusedQuadrant else { return }
-            guard self.terminalManager.isSetup else { return }
-
-            let edit = self.transcriptionDiffer.diff(newText: normalized)
-            print("[AppCoordinator] Partial diff: \(edit)")
-            Task {
-                do {
-                    switch edit {
-                    case .noChange:
-                        break
-                    case .append(let str):
-                        try await self.terminalManager.typeText(str, in: quadrant)
-                        self.activeVoiceBackend.trimAudio(keepLastSeconds: 1.5)
-                    case .replaceFromOffset(let backspaces, let newText):
-                        try await self.terminalManager.sendBackspaces(backspaces, in: quadrant)
-                        if !newText.isEmpty {
-                            try await self.terminalManager.typeText(newText, in: quadrant)
-                        }
-                        self.activeVoiceBackend.trimAudio(keepLastSeconds: 1.5)
-                    }
-                } catch {
-                    print("[AppCoordinator] Partial command failed: \(error)")
-                }
-            }
         }
 
         activeVoiceBackend.onTranscription = { [weak self] text in

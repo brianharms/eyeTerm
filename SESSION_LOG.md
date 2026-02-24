@@ -437,6 +437,46 @@ Fix transcription leaking across terminal switches when user speaks while switch
 
 ---
 
+## Session — 2026-02-23 21:00
+
+### Goal
+Three bug fixes: (1) add "Stop All" button to menu bar dropdown, (2) fix gibberish appearing in terminal during dictation, (3) fix status messages / hallucinations being sent to terminal as words. Also investigated and fixed misaligned terminal-to-quadrant mapping.
+
+### Accomplished
+- **Stop All button** (`MenuBarView.swift`): Added button below "Launch All", visible when `isEyeTrackingActive || isVoiceActive`. Calls `coordinator.stopAll()`.
+- **Gibberish fix** (`AppCoordinator.swift`): Removed ALL terminal injection from `onPartialTranscription`. WhisperKit's interim tokens (mid-word fragments like "h", "hel", "hello") were being streamed into the terminal via `transcriptionDiffer.diff()`, producing visible correction backspaces. Partial transcription now only updates `appState.partialTranscription` for the overlay display. Final transcription (`onTranscription`) handles all terminal injection.
+- **Hallucination filter** (`WhisperKitBackend.swift`): Added `isHallucination(_ text: String) -> Bool` and `knownHallucinations` set. Filters common Whisper artifacts ("thank you.", "you.", "hmm.", lone punctuation, <2 word characters) before calling `onTranscription` or `onPartialTranscription`. Filtered strings are print-logged.
+- **Terminal quadrant alignment fix** (`TerminalManager.swift`): `focusTerminal` was using a stale `cachedWindowIndex`. Every `set index of window X to 1` AppleScript call renumbers ALL iTerm2 windows (frontmost=1), invalidating every other cached index. Fixed: `focusTerminal` now always does a fresh `findWindowIndex` (position-based scan), then wipes `cachedWindowIndex` and re-seeds only the focused quadrant at index 1. Subsequent `typeText` calls for that quadrant correctly use index 1.
+
+### In Progress / Incomplete
+- User has not yet tested the changes — app was launched but testing deferred
+
+### Key Decisions
+- Removed streaming partial injection entirely rather than trying to throttle/debounce it — terminal input should be atomic (type once, correctly), not streamed with corrections
+- Hallucination blocklist kept simple (static set + char count) — no WhisperKit `DecodingOptions` changes to avoid introducing model config complexity
+- `focusTerminal` no longer uses the cache at all for the initial lookup — position scan is the source of truth; cache only used for same-quadrant `typeText` calls after a focus
+
+### Files Changed
+- `Sources/EyeTerm/UI/MenuBarView.swift` — Stop All button
+- `Sources/EyeTerm/App/AppCoordinator.swift` — stripped terminal injection from `onPartialTranscription`
+- `Sources/EyeTerm/Voice/WhisperKitBackend.swift` — `isHallucination()` + `knownHallucinations`, applied in `transcribe()` and `transcribeInterim()`
+- `Sources/EyeTerm/Terminal/TerminalManager.swift` — `focusTerminal` always fresh-scans, cache invalidated + re-seeded after focus
+
+### Known Issues
+- Changes untested by user — scheduled for next session
+- `trimAudio(keepLastSeconds:)` calls were only in the partial injection path (now removed). Final transcription path never trims. If a very long utterance is captured, Whisper will re-transcribe the full buffer. Not a regression — was always true for the final path.
+
+### Running Services
+- eyeTerm.app running from `/tmp/eyeterm-sim-build/Build/Products/Debug/eyeTerm.app`
+
+### Next Steps
+- User to test: dictate into terminal, verify no gibberish before words appear
+- User to test: speak during silence, verify "thank you" / "hmm" etc. don't fire
+- User to test: look at each quadrant, verify the correct terminal gets focused
+- User to test: Stop All button visible and functional when tracking/voice is running
+
+---
+
 ## TODO — Future Features
 
 ### L2CS-Net CoreML Backend (Third Tracking Backend)

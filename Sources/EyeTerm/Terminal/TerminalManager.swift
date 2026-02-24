@@ -140,15 +140,13 @@ final class TerminalManager {
 
     /// Bring the terminal window for the given quadrant to the front by matching screen position.
     func focusTerminal(quadrant: ScreenQuadrant) async throws {
-        // Try the cached index first; fall back to a fresh scan if it fails.
-        let index: Int
-        if let cached = cachedWindowIndex[quadrant] {
-            index = cached
-        } else {
-            let fresh = try await findWindowIndex(for: quadrant)
-            cachedWindowIndex[quadrant] = fresh
-            index = fresh
-        }
+        // Always do a fresh position-based scan: bringing any window to index 1 shifts all other
+        // window indices, so a cached index from a previous focus call is always stale.
+        let index = try await findWindowIndex(for: quadrant)
+        // Invalidate the entire cache since all indices will shift after the focus operation.
+        cachedWindowIndex.removeAll()
+        // The focused window becomes index 1 — cache that for subsequent typeText calls.
+        cachedWindowIndex[quadrant] = 1
 
         let app = preferredTerminal.appName
         let focusScript: String

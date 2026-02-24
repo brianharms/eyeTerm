@@ -108,6 +108,25 @@ final class WhisperKitBackend: VoiceTranscriptionBackend {
         pipeline.trimBuffer(keepLastSeconds: keepLastSeconds)
     }
 
+    // MARK: - Hallucination Filter
+
+    /// Common Whisper hallucinations produced during silence or ambient noise.
+    private static let knownHallucinations: Set<String> = [
+        "thank you", "thank you.", "thanks", "thanks.", "thanks for watching",
+        "thanks for watching.", "thanks for watching!", "thank you for watching",
+        "thank you for watching.", "you", "you.", "hmm", "hmm.", "hm", "hm.",
+        "bye", "bye.", "bye-bye", "bye-bye.", "okay", "okay.", "ok", "ok.",
+        ".", "..", "...", "....", " ", "♪", "♪♪",
+    ]
+
+    private func isHallucination(_ text: String) -> Bool {
+        let lower = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        if Self.knownHallucinations.contains(lower) { return true }
+        // Reject strings with fewer than 2 actual word characters
+        let wordChars = lower.filter { $0.isLetter || $0.isNumber }
+        return wordChars.count < 2
+    }
+
     // MARK: - Private
 
     private func transcribe(audio: [Float]) {
@@ -143,6 +162,10 @@ final class WhisperKitBackend: VoiceTranscriptionBackend {
                     return
                 }
                 guard let self, !self.isStopping else { return }
+                guard !self.isHallucination(text) else {
+                    print("[WhisperKitBackend] Filtering hallucination: \"\(text)\"")
+                    return
+                }
                 await MainActor.run {
                     self.onTranscription?(text)
                 }
@@ -179,7 +202,7 @@ final class WhisperKitBackend: VoiceTranscriptionBackend {
                 let results = try await wk.transcribe(audioArray: audio, callback: { [weak self] progress in
                     guard let self, !Task.isCancelled, !self.isStopping else { return false }
                     let partial = progress.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !partial.isEmpty {
+                    if !partial.isEmpty && !self.isHallucination(partial) {
                         DispatchQueue.main.async { self.onPartialTranscription?(partial) }
                     }
                     return nil // continue decoding
@@ -188,6 +211,10 @@ final class WhisperKitBackend: VoiceTranscriptionBackend {
                 print("[WhisperKitBackend] Interim result: \"\(text)\"")
                 guard !text.isEmpty, !Task.isCancelled else { return }
                 guard let self, !self.isStopping else { return }
+                guard !self.isHallucination(text) else {
+                    print("[WhisperKitBackend] Filtering interim hallucination: \"\(text)\"")
+                    return
+                }
                 await MainActor.run {
                     self.onPartialTranscription?(text)
                 }

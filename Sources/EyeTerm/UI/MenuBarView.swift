@@ -44,6 +44,17 @@ struct MenuBarView: View {
                 .fontWeight(.semibold)
             }
 
+            if appState.isEyeTrackingActive || appState.isVoiceActive {
+                Button {
+                    coordinator.stopAll()
+                } label: {
+                    Label("Stop All", systemImage: "stop.fill")
+                }
+                .buttonStyle(CompactMenuButtonStyle())
+                .font(.caption)
+                .fontWeight(.semibold)
+            }
+
             // ── Eye Tracking ──
             sectionHeader("EYE TRACKING")
 
