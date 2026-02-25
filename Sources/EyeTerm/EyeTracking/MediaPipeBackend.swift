@@ -4,7 +4,7 @@ import Foundation
 
 final class MediaPipeBackend: EyeTrackingBackend {
 
-    var onEyeUpdate: ((ScreenQuadrant?, Double) -> Void)?
+    var onEyeUpdate: ((CGPoint?, Double) -> Void)?
     var onRawEyePoint: ((CGPoint) -> Void)?
     var onCalibratedEyePoint: ((CGPoint) -> Void)?
     var onSmoothedEyePoint: ((CGPoint) -> Void)?
@@ -272,7 +272,6 @@ final class MediaPipeBackend: EyeTrackingBackend {
         let calibratedPoint = CGPoint(x: calX, y: calY)
 
         let smoothedPoint = emaFilter.update(calibratedPoint)
-        let quadrant = ScreenQuadrant.from(normalizedPoint: smoothedPoint)
 
         // Build face observation data for camera preview overlay.
         // Convert MediaPipe coords (top-left origin) to Vision-like coords (bottom-left origin)
@@ -294,7 +293,7 @@ final class MediaPipeBackend: EyeTrackingBackend {
             self?.onRawEyePoint?(rawEye)
             self?.onCalibratedEyePoint?(calibratedPoint)
             self?.onSmoothedEyePoint?(smoothedPoint)
-            self?.onEyeUpdate?(quadrant, confidence)
+            self?.onEyeUpdate?(smoothedPoint, confidence)
             self?.onDiagnostics?(diagnostics)
             self?.onFaceObservation?(faceData)
         }

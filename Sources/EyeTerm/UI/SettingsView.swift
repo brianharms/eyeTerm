@@ -61,6 +61,23 @@ struct SettingsView: View {
                     }
                 }
 
+                described("Which camera to use for eye tracking. Changing restarts the tracker.") {
+                    Picker("Camera", selection: $state.selectedCameraDeviceID) {
+                        Text("System Default").tag("")
+                        ForEach(state.availableCameras, id: \.uid) { cam in
+                            Text(cam.name).tag(cam.uid)
+                        }
+                    }
+                }
+
+                described("Which display the overlay and calibration UI appear on. Pick the screen you face while working.") {
+                    Picker("Display", selection: $state.selectedDisplayID) {
+                        ForEach(state.availableDisplays, id: \.id) { display in
+                            Text(display.name).tag(display.id)
+                        }
+                    }
+                }
+
                 described("How long you must look at a quadrant before it focuses. Shorter = faster, longer = fewer accidental switches.") {
                     LabeledContent("Dwell Time") {
                         HStack {
@@ -311,22 +328,22 @@ struct SettingsView: View {
 
                 described("Adds a dark grey screen backdrop behind the debug overlay — makes gaze dots easier to see.") {
                     Toggle("Dark Backdrop", isOn: $state.showDebugBackdrop)
-                        .disabled(state.overlayMode != .debug)
+                        .disabled(state.overlayMode == .off)
                 }
 
                 described("Shows live dictated text in large font at the bottom of the screen while speaking.") {
                     Toggle("Live Dictation Display", isOn: $state.showDictationDisplay)
-                        .disabled(state.overlayMode != .debug)
+                        .disabled(state.overlayMode == .off)
                 }
 
                 described("Flashes a label on screen whenever a wink gesture fires.") {
                     Toggle("Wink Visualization", isOn: $state.showWinkOverlay)
-                        .disabled(state.overlayMode != .debug)
+                        .disabled(state.overlayMode == .off)
                 }
 
                 described("Flashes a label on screen when an execute or window action command is dispatched.") {
                     Toggle("Command Flash", isOn: $state.showCommandFlash)
-                        .disabled(state.overlayMode != .debug)
+                        .disabled(state.overlayMode == .off)
                 }
             }
 
@@ -431,7 +448,14 @@ struct SettingsView: View {
 
                 WinkIndicatorView(lastWinkEvent: state.lastWinkEvent)
 
-                WinkDiagnosticLogView(events: appState.winkDiagnosticLog)
+                WinkDiagnosticLogView(
+                    events: appState.winkDiagnosticLog,
+                    closedThreshold: appState.winkClosedThreshold,
+                    openThreshold: appState.winkOpenThreshold,
+                    minDuration: appState.minWinkDuration,
+                    maxDuration: appState.maxWinkDuration,
+                    cooldown: appState.winkCooldown
+                )
             }
 
             Section("Voice") {
@@ -652,7 +676,15 @@ struct SettingsView: View {
                 }
 
                 if state.terminalSetupMode == .launchNew {
-                    described("Shell command run in each terminal quadrant on launch. Typically a Claude CLI command.") {
+                    described("Number of terminal columns and rows to create.") {
+                        LabeledContent("Grid") {
+                            HStack {
+                                Stepper("Cols: \(state.terminalGridColumns)", value: $state.terminalGridColumns, in: 1...6)
+                                Stepper("Rows: \(state.terminalGridRows)", value: $state.terminalGridRows, in: 1...6)
+                            }
+                        }
+                    }
+                    described("Shell command run in each terminal on launch. Typically a Claude CLI command.") {
                         LabeledContent("Command to run on terminal launch") {
                             TextField("", text: $state.terminalLaunchCommand)
                                 .textFieldStyle(.roundedBorder)
@@ -670,33 +702,34 @@ struct SettingsView: View {
                     )
                 }
                 if state.terminalSetupMode == .launchNew {
-                    settingHint("Creates four terminal windows arranged in screen quadrants and runs the launch command in each.")
+                    settingHint("Creates \(state.terminalGridColumns * state.terminalGridRows) terminal windows in a \(state.terminalGridColumns)×\(state.terminalGridRows) grid and runs the launch command in each.")
                 } else {
-                    settingHint("Scans for existing terminal windows positioned in each quadrant and adopts them for management.")
+                    let count = appState.terminalSlots.count
+                    settingHint(count > 0 ? "\(count) slots adopted. Scans existing terminal windows and adopts them for management." : "Scans for existing terminal windows and adopts them for management.")
                 }
 
                 LabeledContent("Manual Focus") {
                     HStack(spacing: 4) {
-                        ForEach(ScreenQuadrant.allCases) { quadrant in
+                        ForEach(appState.terminalSlots) { slot in
                             Button {
-                                coordinator.manualFocus(quadrant: quadrant)
+                                coordinator.manualFocus(slotIndex: slot.id)
                             } label: {
-                                Image(systemName: quadrant.symbol)
-                                    .foregroundStyle(appState.focusedQuadrant == quadrant ? Color.accentColor : Color.secondary)
+                                Text(slot.label)
+                                    .foregroundStyle(appState.focusedSlot == slot.id ? Color.accentColor : Color.secondary)
                             }
                             .buttonStyle(.borderless)
                         }
                     }
                 }
                 .disabled(!appState.isTerminalSetup)
-                settingHint("Click a quadrant to manually focus that terminal without eye tracking.")
+                settingHint("Click a slot number to manually focus that terminal without eye tracking.")
 
                 Button {
                     coordinator.testSendText()
                 } label: {
                     Label("Send Test Command", systemImage: "paperplane")
                 }
-                .disabled(appState.focusedQuadrant == nil || !appState.isTerminalSetup)
+                .disabled(appState.focusedSlot == nil || !appState.isTerminalSetup)
                 settingHint("Sends a test string to the focused terminal to verify the connection.")
             }
 
@@ -725,14 +758,6 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .frame(width: 380, height: 640)
-        .onAppear {
-            DispatchQueue.main.async {
-                for window in NSApp.windows where window.title.contains("Settings") || window.identifier?.rawValue.contains("settings") == true {
-                    window.level = .floating
-                    window.makeKeyAndOrderFront(nil)
-                }
-            }
-        }
     }
 
     // MARK: - Helpers
@@ -807,6 +832,11 @@ struct SettingsView: View {
 
 struct WinkDiagnosticLogView: View {
     let events: [WinkDiagnosticEvent]
+    let closedThreshold: Double
+    let openThreshold: Double
+    let minDuration: Double
+    let maxDuration: Double
+    let cooldown: Double
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -822,7 +852,14 @@ struct WinkDiagnosticLogView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 ForEach(Array(events.reversed().enumerated()), id: \.offset) { _, event in
-                    WinkDiagnosticRowView(event: event)
+                    WinkDiagnosticRowView(
+                        event: event,
+                        closedThreshold: closedThreshold,
+                        openThreshold: openThreshold,
+                        minDuration: minDuration,
+                        maxDuration: maxDuration,
+                        cooldown: cooldown
+                    )
                 }
             }
         }
@@ -834,44 +871,116 @@ struct WinkDiagnosticLogView: View {
 
 struct WinkDiagnosticRowView: View {
     let event: WinkDiagnosticEvent
+    let closedThreshold: Double
+    let openThreshold: Double
+    let minDuration: Double
+    let maxDuration: Double
+    let cooldown: Double
 
     var sideLabel: String { event.side == .left ? "L" : "R" }
     var sideColor: Color { event.side == .left ? .blue : .orange }
 
     var outcomeText: String {
         switch event.outcome {
-        case .fired: return "Wink fired"
-        case .bilateralBlink: return "Bilateral blink (ignored)"
-        case .otherEyeNotOpen: return "Other eye not open"
-        case .otherEyeDipped(let min): return String(format: "Other eye dipped (min %.2f)", min)
-        case .tooShort(let d): return String(format: "Too short (%.2fs)", d)
-        case .tooLong(let d): return String(format: "Too long (%.2fs)", d)
-        case .cooldown(let r): return String(format: "Cooldown (%.1fs left)", r)
+        case .fired: return "fired"
+        case .bilateralBlink: return "bilateral blink"
+        case .otherEyeNotOpen: return "other eye not open"
+        case .otherEyeDipped: return "other eye dipped"
+        case .tooShort: return "too short"
+        case .tooLong: return "too long"
+        case .cooldown: return "cooldown"
         }
     }
 
     var outcomeColor: Color {
         switch event.outcome {
         case .fired: return .green
-        default: return .secondary
+        default: return .red
         }
     }
 
+    // Pass/fail for each check
+    var eyePass: Bool { event.winkEyeMin < closedThreshold }
+    var otherPass: Bool {
+        if case .otherEyeNotOpen = event.outcome { return false }
+        return event.otherEyeMin >= openThreshold
+    }
+    var durPass: Bool { event.duration >= minDuration && event.duration <= maxDuration }
+    var bltPass: Bool {
+        if case .bilateralBlink = event.outcome { return false }
+        return true
+    }
+    var cdPass: Bool {
+        if case .cooldown = event.outcome { return false }
+        return true
+    }
+
     var body: some View {
-        HStack(spacing: 6) {
-            Text(sideLabel)
-                .font(.caption.bold())
-                .foregroundStyle(sideColor)
-                .frame(width: 14)
-            Text(String(format: "%.2fs", event.duration))
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .frame(width: 38, alignment: .trailing)
-            Text(outcomeText)
-                .font(.caption)
-                .foregroundStyle(outcomeColor)
-            Spacer()
+        VStack(alignment: .leading, spacing: 2) {
+            // Line 1: side + duration + outcome
+            HStack(spacing: 6) {
+                Text(sideLabel)
+                    .font(.caption.bold())
+                    .foregroundStyle(sideColor)
+                    .frame(width: 14)
+                Text(String(format: "%.2fs", event.duration))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(width: 38, alignment: .trailing)
+                Text(outcomeText)
+                    .font(.caption.bold())
+                    .foregroundStyle(outcomeColor)
+                Spacer()
+            }
+            // Line 2: stat pills
+            HStack(spacing: 5) {
+                statPill(
+                    label: "Eye↓",
+                    value: String(format: "%.2f", event.winkEyeMin),
+                    target: String(format: "<%.2f", closedThreshold),
+                    pass: eyePass
+                )
+                statPill(
+                    label: "Other",
+                    value: String(format: "%.2f", event.otherEyeMin),
+                    target: String(format: "≥%.2f", openThreshold),
+                    pass: otherPass
+                )
+                statPill(
+                    label: "Dur",
+                    value: String(format: "%.2f", event.duration),
+                    target: String(format: "%.2f–%.1f", minDuration, maxDuration),
+                    pass: durPass
+                )
+                statPill(label: "Blt", value: bltPass ? "ok" : "!", target: "", pass: bltPass)
+                statPill(label: "CD", value: cdPass ? "ok" : "!", target: "", pass: cdPass)
+                Spacer()
+            }
+            .padding(.leading, 20)
         }
+    }
+
+    @ViewBuilder
+    private func statPill(label: String, value: String, target: String, pass: Bool) -> some View {
+        HStack(spacing: 2) {
+            Text(label)
+                .font(.system(size: 8, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(size: 8, design: .monospaced))
+                .foregroundStyle(.primary)
+            if !target.isEmpty {
+                Text(target)
+                    .font(.system(size: 7, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+            }
+            Text(pass ? "✓" : "✗")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(pass ? Color.green : Color.red)
+        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 2)
+        .background(Color(NSColor.quaternaryLabelColor).opacity(0.4), in: RoundedRectangle(cornerRadius: 3))
     }
 }
 

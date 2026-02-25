@@ -295,8 +295,9 @@ struct MenuBarView: View {
 
     @ViewBuilder
     private var quadrantLabel: some View {
-        if let quadrant = appState.focusedQuadrant {
-            Text(quadrant.displayName)
+        if let slotID = appState.focusedSlot,
+           let slot = appState.terminalSlots.first(where: { $0.id == slotID }) {
+            Text("Slot \(slot.label)")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         } else {

@@ -55,7 +55,10 @@ final class AppCoordinator {
         pushAllSettings()
         observeSettings()
         refreshMicList()
+        appState.refreshAvailableCameras()
+        appState.refreshAvailableDisplays()
         registerDeviceChangeListener()
+        registerScreenChangeListener()
         setupWindowLevelObservers()
 
         if !OnboardingState.hasCompleted {
@@ -68,32 +71,35 @@ final class AppCoordinator {
     // MARK: - Wiring
 
     private func wireCallbacks() {
-        activeBackend.onEyeUpdate = { [weak self] quadrant, confidence in
+        activeBackend.onEyeUpdate = { [weak self] point, confidence in
             guard let self else { return }
-            if quadrant != self.appState.activeQuadrant {
-                self.appState.dwellingQuadrant = nil
+            let slot = point.flatMap { pt in
+                self.appState.terminalSlots.first { $0.normalizedRect.contains(pt) }?.id
+            }
+            if slot != self.appState.activeSlot {
+                self.appState.dwellingSlot = nil
                 self.appState.dwellProgress = 0
             }
-            self.appState.activeQuadrant = quadrant
+            self.appState.activeSlot = slot
             self.appState.eyeConfidence = confidence
-            self.dwellTimer.update(quadrant: quadrant)
+            self.dwellTimer.update(slot: slot)
         }
 
-        dwellTimer.onDwellProgress = { [weak self] quadrant, progress in
+        dwellTimer.onDwellProgress = { [weak self] slot, progress in
             guard let self else { return }
-            self.appState.dwellingQuadrant = quadrant
+            self.appState.dwellingSlot = slot
             self.appState.dwellProgress = progress
         }
 
-        dwellTimer.onDwellConfirmed = { [weak self] quadrant in
+        dwellTimer.onDwellConfirmed = { [weak self] slot in
             guard let self else { return }
             self.activeVoiceBackend.flushAudio()
             self.transcriptionDiffer.reset()
-            self.appState.focusedQuadrant = quadrant
+            self.appState.focusedSlot = slot
             guard self.appState.isTerminalSetup else { return }
             Task {
                 do {
-                    try await self.terminalManager.focusTerminal(quadrant: quadrant)
+                    try await self.terminalManager.focusTerminal(slotIndex: slot)
                 } catch {
                     self.appState.addError("Focus failed: \(error.localizedDescription)")
                 }
@@ -140,8 +146,8 @@ final class AppCoordinator {
                             }
                         }
                         try? await self.windowActionManager.execute(windowAction)
-                        if let quadrant = self.appState.focusedQuadrant, self.terminalManager.isSetup {
-                            try? await self.terminalManager.focusTerminal(quadrant: quadrant)
+                        if let slotIndex = self.appState.focusedSlot, self.terminalManager.isSetup {
+                            try? await self.terminalManager.focusTerminal(slotIndex: slotIndex)
                         }
                         self.transcriptionDiffer.reset()
                         self.appState.transcriptionHistory.append((text: text, cleaned: "[\(windowAction.rawValue)]", timestamp: Date()))
@@ -240,8 +246,8 @@ final class AppCoordinator {
         appState.transcriptionHistory.removeAll { $0.timestamp < cutoff }
         print("[AppCoordinator] Parsed \(commands.count) commands from: \"\(text)\"")
 
-        guard let quadrant = appState.focusedQuadrant else {
-            print("[AppCoordinator] No focused quadrant — transcription ignored. Use manual focus or eye tracking.")
+        guard let slotIndex = appState.focusedSlot else {
+            print("[AppCoordinator] No focused slot — transcription ignored. Use manual focus or eye tracking.")
             transcriptionDiffer.reset()
             return
         }
@@ -250,7 +256,7 @@ final class AppCoordinator {
             return
         }
 
-        print("[AppCoordinator] Sending to \(quadrant.displayName)")
+        print("[AppCoordinator] Sending to slot \(slotIndex + 1)")
         Task {
             for command in commands {
                 do {
@@ -262,11 +268,11 @@ final class AppCoordinator {
                         case .noChange:
                             break
                         case .append(let appendStr):
-                            try await self.terminalManager.typeText(appendStr, in: quadrant)
+                            try await self.terminalManager.typeText(appendStr, in: slotIndex)
                         case .replaceFromOffset(let backspaces, let newText):
-                            try await self.terminalManager.sendBackspaces(backspaces, in: quadrant)
+                            try await self.terminalManager.sendBackspaces(backspaces, in: slotIndex)
                             if !newText.isEmpty {
-                                try await self.terminalManager.typeText(newText, in: quadrant)
+                                try await self.terminalManager.typeText(newText, in: slotIndex)
                             }
                         }
                     case .execute:
@@ -277,7 +283,7 @@ final class AppCoordinator {
                                 self?.appState.lastCommandFlash = nil
                             }
                         }
-                        try await self.terminalManager.sendReturn(in: quadrant)
+                        try await self.terminalManager.sendReturn(in: slotIndex)
                     }
                 } catch {
                     print("[AppCoordinator] Command failed: \(error)")
@@ -324,16 +330,16 @@ final class AppCoordinator {
 
     private func executeWinkAction(_ action: WinkAction) {
         guard action != .none else { return }
-        guard let quadrant = appState.focusedQuadrant, terminalManager.isSetup else { return }
+        guard let slotIndex = appState.focusedSlot, terminalManager.isSetup else { return }
         Task {
             do {
                 switch action {
                 case .doubleEscape:
-                    try await terminalManager.sendDoubleEscape(in: quadrant)
+                    try await terminalManager.sendDoubleEscape(in: slotIndex)
                 case .singleEscape:
-                    try await terminalManager.sendEscape(in: quadrant)
+                    try await terminalManager.sendEscape(in: slotIndex)
                 case .enter:
-                    try await terminalManager.sendReturn(in: quadrant)
+                    try await terminalManager.sendReturn(in: slotIndex)
                 case .none:
                     break
                 }
@@ -377,6 +383,8 @@ final class AppCoordinator {
             _ = appState.winkCooldown
             _ = appState.windowActionsEnabled
             _ = appState.terminalSetupMode
+            _ = appState.selectedCameraDeviceID
+            _ = appState.selectedDisplayID
         } onChange: { [weak self] in
             DispatchQueue.main.async {
                 self?.pushAllSettings()
@@ -422,6 +430,17 @@ final class AppCoordinator {
         blinkDetector.bilateralRejectWindow = appState.bilateralRejectWindow
         blinkDetector.cooldown = appState.winkCooldown
         if !appState.blinkGesturesEnabled { blinkDetector.reset() }
+        // Push camera selection to Apple Vision backend (cast required — not in protocol)
+        if let tracker = activeBackend as? EyeTermTracker {
+            let newCamID = appState.selectedCameraDeviceID
+            if tracker.selectedCameraDeviceID != newCamID {
+                tracker.selectedCameraDeviceID = newCamID
+                if tracker.isRunning {
+                    restartEyeTracking()
+                }
+            }
+        }
+        refreshOverlayDisplay()
         updateOverlayVisibility()
     }
 
@@ -458,8 +477,8 @@ final class AppCoordinator {
         stopEyeTracking()
         stopVoice()
         dwellTimer.reset()
-        appState.focusedQuadrant = nil
-        appState.activeQuadrant = nil
+        appState.focusedSlot = nil
+        appState.activeSlot = nil
         dismissEyeTermOverlay()
         updateStatus()
     }
@@ -470,9 +489,9 @@ final class AppCoordinator {
         do {
             switch appState.terminalSetupMode {
             case .launchNew:
-                try await terminalManager.setupTerminals()
+                try await terminalManager.setupTerminals(cols: appState.terminalGridColumns, rows: appState.terminalGridRows, appState: appState)
             case .adoptExisting:
-                try await terminalManager.adoptTerminals()
+                try await terminalManager.adoptTerminals(appState: appState)
             }
             appState.isTerminalSetup = true
             appState.statusMessage = "Terminals ready"
@@ -509,7 +528,7 @@ final class AppCoordinator {
         activeBackend.stop()
         dwellTimer.reset()
         appState.isEyeTrackingActive = false
-        appState.activeQuadrant = nil
+        appState.activeSlot = nil
         dismissEyeTermOverlay()
         dismissCameraPreview()
         updateStatus()
@@ -582,16 +601,16 @@ final class AppCoordinator {
 
     // MARK: - Manual Focus
 
-    func manualFocus(quadrant: ScreenQuadrant) {
-        appState.focusedQuadrant = quadrant
-        print("[AppCoordinator] Manual focus set to \(quadrant.displayName)")
+    func manualFocus(slotIndex: Int) {
+        appState.focusedSlot = slotIndex
+        print("[AppCoordinator] Manual focus set to slot \(slotIndex + 1)")
         guard terminalManager.isSetup else {
             print("[AppCoordinator] Terminals not set up — focus set but can't activate window")
             return
         }
         Task {
             do {
-                try await terminalManager.focusTerminal(quadrant: quadrant)
+                try await terminalManager.focusTerminal(slotIndex: slotIndex)
             } catch {
                 appState.addError("Focus failed: \(error.localizedDescription)")
             }
@@ -601,8 +620,8 @@ final class AppCoordinator {
     // MARK: - Test Send
 
     func testSendText() {
-        guard let quadrant = appState.focusedQuadrant else {
-            appState.addError("No quadrant focused — select one first")
+        guard let slotIndex = appState.focusedSlot else {
+            appState.addError("No slot focused — select one first")
             return
         }
         guard terminalManager.isSetup else {
@@ -610,11 +629,11 @@ final class AppCoordinator {
             return
         }
         let testText = "echo hello from eyeTerm"
-        print("[AppCoordinator] Test send: \"\(testText)\" to \(quadrant.displayName)")
+        print("[AppCoordinator] Test send: \"\(testText)\" to slot \(slotIndex + 1)")
         Task {
             do {
-                try await terminalManager.typeText(testText, in: quadrant)
-                try await terminalManager.sendReturn(in: quadrant)
+                try await terminalManager.typeText(testText, in: slotIndex)
+                try await terminalManager.sendReturn(in: slotIndex)
             } catch {
                 appState.addError("Test send failed: \(error.localizedDescription)")
             }
@@ -696,7 +715,26 @@ final class AppCoordinator {
                   let window = notification.object as? NSWindow,
                   NSApp.windows.contains(window),
                   window !== self.eyeTermOverlayWindow else { return }
+            // Keep the Settings window (the only NSWindow; all others are NSPanel) always floating
+            if !(window is NSPanel) {
+                window.level = .floating
+                return
+            }
             window.level = .normal
+        }
+
+        // Elevate the Settings window the moment it appears on screen
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeMainNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self,
+                  let window = notification.object as? NSWindow,
+                  NSApp.windows.contains(window),
+                  window !== self.eyeTermOverlayWindow,
+                  !(window is NSPanel) else { return }
+            window.level = .floating
         }
     }
 
@@ -716,12 +754,48 @@ final class AppCoordinator {
 
     // MARK: - eyeTerm Overlay
 
+    private func selectedScreen() -> NSScreen {
+        let target = appState.selectedDisplayID
+        return NSScreen.screens.first(where: {
+            ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID) == target
+        }) ?? NSScreen.main ?? NSScreen.screens[0]
+    }
+
+    private func refreshOverlayDisplay() {
+        guard let panel = eyeTermOverlayWindow else { return }
+        let desired = selectedScreen()
+        guard panel.screen != desired else { return }
+        // Overlay is on the wrong screen — rebuild it on the correct one
+        dismissEyeTermOverlay()
+        if appState.overlayMode != .off {
+            showEyeTermOverlay()
+        }
+    }
+
+    func restartEyeTracking() {
+        guard appState.isEyeTrackingActive else { return }
+        stopEyeTracking()
+        startEyeTracking()
+    }
+
+    private func registerScreenChangeListener() {
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            self.appState.refreshAvailableDisplays()
+            self.refreshOverlayDisplay()
+        }
+    }
+
     private func showEyeTermOverlay() {
         if let panel = eyeTermOverlayWindow {
             panel.orderFrontRegardless()
             return
         }
-        guard let screen = NSScreen.main else { return }
+        let screen = selectedScreen()
 
         let panel = NSPanel(
             contentRect: screen.frame,
@@ -805,12 +879,10 @@ final class AppCoordinator {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.ignoresMouseEvents = true
 
-        if let screen = NSScreen.main {
-            let screenFrame = screen.visibleFrame
-            let x = screenFrame.midX - 66.5
-            let y = screenFrame.minY + 12
-            panel.setFrameOrigin(NSPoint(x: x, y: y))
-        }
+        let screenFrame = selectedScreen().visibleFrame
+        let x = screenFrame.midX - 66.5
+        let y = screenFrame.minY + 12
+        panel.setFrameOrigin(NSPoint(x: x, y: y))
 
         panel.contentView = NSHostingView(rootView: waveformView)
         panel.orderFrontRegardless()
@@ -951,7 +1023,7 @@ final class AppCoordinator {
     // MARK: - Calibration Overlay
 
     private func showCalibrationOverlay() {
-        guard let screen = NSScreen.main else { return }
+        let screen = selectedScreen()
 
         let panel = NSPanel(
             contentRect: screen.frame,

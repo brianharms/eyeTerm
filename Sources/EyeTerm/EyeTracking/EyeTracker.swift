@@ -27,7 +27,7 @@ struct FaceObservationData {
 
 final class EyeTermTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, EyeTrackingBackend {
 
-    var onEyeUpdate: ((ScreenQuadrant?, Double) -> Void)?
+    var onEyeUpdate: ((CGPoint?, Double) -> Void)?
     var onRawEyePoint: ((CGPoint) -> Void)?
     var onCalibratedEyePoint: ((CGPoint) -> Void)?
     var onSmoothedEyePoint: ((CGPoint) -> Void)?
@@ -64,6 +64,8 @@ final class EyeTermTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
         set { estimator.headAmplification = newValue }
     }
 
+    var selectedCameraDeviceID: String = ""  // empty = system default
+
     private(set) var isRunning = false
 
     /// Read-only access to the capture session for camera preview.
@@ -92,7 +94,15 @@ final class EyeTermTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
     func start() throws {
         guard !isRunning else { return }
 
-        guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front) else {
+        let camera: AVCaptureDevice? = {
+            if !selectedCameraDeviceID.isEmpty,
+               let device = AVCaptureDevice(uniqueID: selectedCameraDeviceID) {
+                return device
+            }
+            return AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
+                ?? AVCaptureDevice.default(for: .video)
+        }()
+        guard let camera else {
             throw EyeTermTrackerError.cameraNotAvailable
         }
 
@@ -166,13 +176,13 @@ final class EyeTermTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
         do {
             try handler.perform([faceRectsRequest])
         } catch {
-            reportUpdate(quadrant: nil, confidence: 0)
+            reportUpdate(point: nil, confidence: 0)
             reportFaceObservation(nil)
             return
         }
 
         guard let faceRects = faceRectsRequest.results, !faceRects.isEmpty else {
-            reportUpdate(quadrant: nil, confidence: 0)
+            reportUpdate(point: nil, confidence: 0)
             reportFaceObservation(nil)
             return
         }
@@ -183,13 +193,13 @@ final class EyeTermTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
         do {
             try handler.perform([landmarksRequest])
         } catch {
-            reportUpdate(quadrant: nil, confidence: 0)
+            reportUpdate(point: nil, confidence: 0)
             reportFaceObservation(nil)
             return
         }
 
         guard let results = landmarksRequest.results, let face = results.first else {
-            reportUpdate(quadrant: nil, confidence: 0)
+            reportUpdate(point: nil, confidence: 0)
             reportFaceObservation(nil)
             return
         }
@@ -204,19 +214,18 @@ final class EyeTermTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
         let faceData = extractFaceData(from: face)
 
         guard let result = estimator.estimateEye(from: face, yawOverride: yawOverride, pitchOverride: pitchOverride) else {
-            reportUpdate(quadrant: nil, confidence: 0)
+            reportUpdate(point: nil, confidence: 0)
             reportFaceObservation(faceData)
             return
         }
 
         let smoothedPoint = emaFilter.update(result.calibratedPoint)
-        let quadrant = ScreenQuadrant.from(normalizedPoint: smoothedPoint)
 
         DispatchQueue.main.async { [weak self] in
             self?.onRawEyePoint?(result.rawPoint)
             self?.onCalibratedEyePoint?(result.calibratedPoint)
             self?.onSmoothedEyePoint?(smoothedPoint)
-            self?.onEyeUpdate?(quadrant, result.confidence)
+            self?.onEyeUpdate?(smoothedPoint, result.confidence)
             self?.onDiagnostics?(result.diagnostics)
             self?.onFaceObservation?(faceData)
         }
@@ -224,9 +233,9 @@ final class EyeTermTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
 
     // MARK: - Helpers
 
-    private func reportUpdate(quadrant: ScreenQuadrant?, confidence: Double) {
+    private func reportUpdate(point: CGPoint?, confidence: Double) {
         DispatchQueue.main.async { [weak self] in
-            self?.onEyeUpdate?(quadrant, confidence)
+            self?.onEyeUpdate?(point, confidence)
         }
     }
 

@@ -4,6 +4,68 @@ This file tracks session handoffs so the next Claude Code instance can quickly g
 
 ---
 
+## Session — 2026-02-24 ~12:00
+
+### Goal
+Implement the "Dynamic Terminal Slots" plan: replace the hardcoded 4-quadrant `ScreenQuadrant` enum with a dynamic `Int`-indexed slot system supporting arbitrary N×M window grids. Gaze outside all slots → `nil` (no spurious focus).
+
+### Accomplished
+- **Deleted** `Sources/EyeTerm/EyeTracking/ScreenQuadrant.swift` and removed its reference from `eyeTerm.xcodeproj/project.pbxproj`
+- **`AppState.swift`**: Added `TerminalSlot` struct (`id`, `normalizedRect`, `label`), `terminalSlots: [TerminalSlot]`, `activeSlot/focusedSlot/dwellingSlot: Int?`, `terminalGridColumns/Rows: Int`; removed `activeQuadrant`, `focusedQuadrant`, `dwellingQuadrant`
+- **`EyeTrackingBackend.swift`**: Protocol callback changed from `((ScreenQuadrant?, Double) -> Void)?` → `((CGPoint?, Double) -> Void)?`
+- **`DwellTimer.swift`**: All `ScreenQuadrant` types → `Int`; `update(slot: Int?)` signature
+- **`EyeTracker.swift`**: Emits `CGPoint?` (smoothed gaze point) instead of `ScreenQuadrant?`
+- **`MediaPipeBackend.swift`**: Same — emits `CGPoint?`
+- **`WindowLayout.swift`**: Replaced `boundsForQuadrant()` with `normalizedRect(slotIndex:cols:rows:)` and `boundsForSlot(slotIndex:cols:rows:screen:)`
+- **`TerminalManager.swift`**: Full rewrite — `windowIndices: [Int: Int]`, `setupTerminals(cols:rows:appState:)` tiles N×M windows and populates `appState.terminalSlots`, `adoptTerminals(appState:)` queries ALL windows via AppleScript; fixed `guard let result = try?` double-unwrap bug (removed redundant `let r = result`)
+- **`AppCoordinator.swift`**: `onEyeUpdate` now hit-tests `CGPoint` against `appState.terminalSlots[].normalizedRect`, classifies to `activeSlot: Int?`; dwell/focus callbacks use `Int`; `manualFocus(slotIndex:)`; setup calls `terminalManager.setupTerminals(cols:rows:appState:)` / `adoptTerminals(appState:)`
+- **`EyeOverlayView.swift`**: All `ForEach(ScreenQuadrant.allCases)` → `ForEach(appState.terminalSlots)`; `slotRect(_ slot:, size:)` helper using `normalizedRect`; slot comparisons via `slot.id`
+- **`SettingsView.swift`**: Grid size steppers (Cols/Rows 1–6) in "Create New Terminals" section; Manual Focus uses slot buttons from `appState.terminalSlots`
+- **`MenuBarView.swift`**: `focusedQuadrant` → slot lookup using `appState.focusedSlot` + `terminalSlots`
+- **Build**: `BUILD SUCCEEDED` with only warnings (no errors)
+
+### In Progress / Incomplete
+Nothing — the plan is fully implemented and building cleanly.
+
+### Key Decisions
+- Slot classification (gaze point → slot index) lives in `AppCoordinator.wireCallbacks()` using `normalizedRect.contains(pt)` hit-test
+- `focusedSlot` persists after gaze leaves all slots — voice/winks still route to last focused terminal
+- `adoptTerminals()` queries ALL windows (no limit), one slot per window ordered front-to-back
+- `setupTerminals()` takes `cols:rows:appState:` and passes `appState` for slot population on the MainActor
+
+### Files Changed
+- `Sources/EyeTerm/EyeTracking/ScreenQuadrant.swift` — DELETED
+- `Sources/EyeTerm/App/AppState.swift`
+- `Sources/EyeTerm/App/AppCoordinator.swift`
+- `Sources/EyeTerm/EyeTracking/EyeTrackingBackend.swift`
+- `Sources/EyeTerm/EyeTracking/DwellTimer.swift` (via `Utilities/DwellTimer.swift`)
+- `Sources/EyeTerm/EyeTracking/EyeTracker.swift`
+- `Sources/EyeTerm/EyeTracking/MediaPipeBackend.swift`
+- `Sources/EyeTerm/Terminal/TerminalManager.swift`
+- `Sources/EyeTerm/Terminal/WindowLayout.swift`
+- `Sources/EyeTerm/UI/EyeOverlayView.swift`
+- `Sources/EyeTerm/UI/SettingsView.swift`
+- `Sources/EyeTerm/UI/MenuBarView.swift`
+- `Sources/EyeTerm/Utilities/BlinkGestureDetector.swift`
+- `Sources/EyeTerm/Utilities/DwellTimer.swift`
+- `eyeTerm.xcodeproj/project.pbxproj` — removed ScreenQuadrant.swift file reference
+
+### Known Issues
+- None blocking. There are non-fatal warnings in `TerminalManager.swift` about unused `try?` results and Swift 6 sendability, pre-existing.
+- `adoptTerminals()` normalized rect conversion assumes AppleScript Y origin matches screen origin — may need verification on non-primary screens.
+
+### Running Services
+None.
+
+### Next Steps
+- Test at runtime: launch app, verify "Create New Terminals" with 2×2 creates 4 tiled windows, overlay shows 4 slot borders
+- Test 3×2 grid: change steppers to 3 cols × 2 rows, re-run setup, confirm 6 windows + 6 overlay borders
+- Test "Adopt Existing": open 4 iTerm windows manually, click Adopt, confirm overlay matches actual window positions
+- Verify gaze in empty space between terminals → no slot highlighted, no dwell progress
+- Verify wink gesture still routes to correct slot after the refactor
+
+---
+
 ## Session — 2026-02-23 22:00
 
 ### Goal

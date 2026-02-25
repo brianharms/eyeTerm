@@ -13,6 +13,8 @@ struct EyeTermOverlayView: View {
                 if appState.overlayMode == .debug {
                     DebugOverlayContent(size: size)
                 }
+                // Shared features — active in both subtle and debug modes
+                SharedOverlayContent(size: size)
             }
         }
         .ignoresSafeArea()
@@ -26,8 +28,6 @@ private struct SubtleOverlayContent: View {
     @Environment(AppState.self) private var appState
 
     var body: some View {
-        let midX = size.width / 2
-        let midY = size.height / 2
         let smoothX = appState.smoothedEyePoint.x * size.width
         let smoothY = appState.smoothedEyePoint.y * size.height
 
@@ -36,14 +36,14 @@ private struct SubtleOverlayContent: View {
             .frame(width: appState.subtleEyeSize, height: appState.subtleEyeSize)
             .position(x: smoothX, y: smoothY)
 
-        ForEach(ScreenQuadrant.allCases) { quadrant in
-            let isFocused = quadrant == appState.focusedQuadrant
-            let isDwelling = quadrant == appState.dwellingQuadrant
+        ForEach(appState.terminalSlots) { slot in
+            let isFocused = slot.id == appState.focusedSlot
+            let isDwelling = slot.id == appState.dwellingSlot
             let progress = isDwelling ? appState.dwellProgress : 0
 
             // Dwell progress border
             if isDwelling && !isFocused && progress > 0 && appState.showActiveState {
-                let rect = quadrantRect(quadrant, midX: midX, midY: midY)
+                let rect = slotRect(slot, size: size)
                 Rectangle()
                     .strokeBorder(.green.opacity(0.4 * progress), lineWidth: 1 + 1 * progress)
                     .frame(width: rect.width, height: rect.height)
@@ -52,7 +52,7 @@ private struct SubtleOverlayContent: View {
 
             // Confirmed flash border
             if isFocused && appState.showQuadrantHighlighting {
-                let rect = quadrantRect(quadrant, midX: midX, midY: midY)
+                let rect = slotRect(slot, size: size)
                 Rectangle()
                     .strokeBorder(.green.opacity(0.85), lineWidth: appState.quadrantBorderWidth)
                     .frame(width: rect.width, height: rect.height)
@@ -62,13 +62,13 @@ private struct SubtleOverlayContent: View {
         }
     }
 
-    private func quadrantRect(_ quadrant: ScreenQuadrant, midX: CGFloat, midY: CGFloat) -> CGRect {
-        switch quadrant {
-        case .topLeft: CGRect(x: 0, y: 0, width: midX, height: midY)
-        case .topRight: CGRect(x: midX, y: 0, width: midX, height: midY)
-        case .bottomLeft: CGRect(x: 0, y: midY, width: midX, height: midY)
-        case .bottomRight: CGRect(x: midX, y: midY, width: midX, height: midY)
-        }
+    private func slotRect(_ slot: TerminalSlot, size: CGSize) -> CGRect {
+        CGRect(
+            x: slot.normalizedRect.minX * size.width,
+            y: slot.normalizedRect.minY * size.height,
+            width: slot.normalizedRect.width * size.width,
+            height: slot.normalizedRect.height * size.height
+        )
     }
 }
 
@@ -95,13 +95,13 @@ private struct DebugOverlayContent: View {
         let smoothX = appState.smoothedEyePoint.x * size.width
         let smoothY = appState.smoothedEyePoint.y * size.height
 
-        // Quadrant fills
+        // Slot fills
         if appState.showQuadrantHighlighting {
-            ForEach(ScreenQuadrant.allCases) { quadrant in
-                let rect = quadrantRect(quadrant, midX: midX, midY: midY)
-                let isActive = quadrant == appState.activeQuadrant
-                let isFocused = quadrant == appState.focusedQuadrant
-                let isDwelling = quadrant == appState.dwellingQuadrant
+            ForEach(appState.terminalSlots) { slot in
+                let rect = slotRect(slot, size: size)
+                let isActive = slot.id == appState.activeSlot
+                let isFocused = slot.id == appState.focusedSlot
+                let isDwelling = slot.id == appState.dwellingSlot
                 let progress = isDwelling ? appState.dwellProgress : 0
 
                 if isFocused {
@@ -296,12 +296,12 @@ private struct DebugOverlayContent: View {
             }
             Text("Confidence: \(Int(appState.eyeConfidence * 100))%")
             Text("Yaw: \(fd(appState.headYaw))  Pitch: \(fd(appState.headPitch))")
-            if let active = appState.activeQuadrant {
-                Text("Looking: \(active.displayName)")
+            if let active = appState.activeSlot {
+                Text("Looking: slot \(active + 1)")
                     .foregroundStyle(.yellow)
             }
-            if let focused = appState.focusedQuadrant {
-                Text("Focused: \(focused.displayName)")
+            if let focused = appState.focusedSlot {
+                Text("Focused: slot \(focused + 1)")
                     .foregroundStyle(.green)
             }
         }
@@ -311,14 +311,42 @@ private struct DebugOverlayContent: View {
         .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 6))
         .position(x: 100, y: 180)
 
-        // Live dictation display (5b) — filtered to complete words, inside focused quadrant
+    }
+
+    private func slotRect(_ slot: TerminalSlot, size: CGSize) -> CGRect {
+        CGRect(
+            x: slot.normalizedRect.minX * size.width,
+            y: slot.normalizedRect.minY * size.height,
+            width: slot.normalizedRect.width * size.width,
+            height: slot.normalizedRect.height * size.height
+        )
+    }
+
+    private func f(_ value: CGFloat) -> String {
+        String(format: "%.3f", value)
+    }
+
+    private func fd(_ value: Double) -> String {
+        String(format: "%+.3f", value)
+    }
+}
+
+// MARK: - Shared Overlay (subtle + debug)
+
+private struct SharedOverlayContent: View {
+    let size: CGSize
+    @Environment(AppState.self) private var appState
+
+    var body: some View {
+        // Live dictation display — filtered to complete words, inside focused slot
         if appState.showDictationDisplay {
             let words = appState.partialTranscription.components(separatedBy: " ")
             let displayText = words.count > 1 ? words.dropLast().joined(separator: " ") : ""
             if !displayText.isEmpty {
                 let dictRect: CGRect = {
-                    if let q = appState.focusedQuadrant {
-                        return quadrantRect(q, midX: midX, midY: midY)
+                    if let slotID = appState.focusedSlot,
+                       let slot = appState.terminalSlots.first(where: { $0.id == slotID }) {
+                        return slotRect(slot, size: size)
                     }
                     return CGRect(x: 0, y: 0, width: size.width, height: size.height)
                 }()
@@ -332,11 +360,12 @@ private struct DebugOverlayContent: View {
             }
         }
 
-        // Wink action visualization (5c)
+        // Wink action visualization
         if appState.showWinkOverlay, let winkText = appState.lastWinkDisplay {
             let focusedRect: CGRect = {
-                if let q = appState.focusedQuadrant {
-                    return quadrantRect(q, midX: midX, midY: midY)
+                if let slotID = appState.focusedSlot,
+                   let slot = appState.terminalSlots.first(where: { $0.id == slotID }) {
+                    return slotRect(slot, size: size)
                 }
                 return CGRect(x: 0, y: 0, width: size.width, height: size.height)
             }()
@@ -350,11 +379,12 @@ private struct DebugOverlayContent: View {
                 .animation(.easeOut(duration: 0.8), value: winkText)
         }
 
-        // Command flash visualization (5d)
+        // Command flash visualization
         if appState.showCommandFlash, let flashText = appState.lastCommandFlash {
             let focusedRect: CGRect = {
-                if let q = appState.focusedQuadrant {
-                    return quadrantRect(q, midX: midX, midY: midY)
+                if let slotID = appState.focusedSlot,
+                   let slot = appState.terminalSlots.first(where: { $0.id == slotID }) {
+                    return slotRect(slot, size: size)
                 }
                 return CGRect(x: 0, y: 0, width: size.width, height: size.height)
             }()
@@ -369,20 +399,12 @@ private struct DebugOverlayContent: View {
         }
     }
 
-    private func quadrantRect(_ quadrant: ScreenQuadrant, midX: CGFloat, midY: CGFloat) -> CGRect {
-        switch quadrant {
-        case .topLeft: CGRect(x: 0, y: 0, width: midX, height: midY)
-        case .topRight: CGRect(x: midX, y: 0, width: midX, height: midY)
-        case .bottomLeft: CGRect(x: 0, y: midY, width: midX, height: midY)
-        case .bottomRight: CGRect(x: midX, y: midY, width: midX, height: midY)
-        }
-    }
-
-    private func f(_ value: CGFloat) -> String {
-        String(format: "%.3f", value)
-    }
-
-    private func fd(_ value: Double) -> String {
-        String(format: "%+.3f", value)
+    private func slotRect(_ slot: TerminalSlot, size: CGSize) -> CGRect {
+        CGRect(
+            x: slot.normalizedRect.minX * size.width,
+            y: slot.normalizedRect.minY * size.height,
+            width: slot.normalizedRect.width * size.width,
+            height: slot.normalizedRect.height * size.height
+        )
     }
 }

@@ -1,10 +1,13 @@
 import SwiftUI
+import AppKit
+import AVFoundation
+import CoreGraphics
 
 @Observable
 final class AppState {
     // MARK: - Eye Tracking
     var isEyeTrackingActive = false
-    var activeQuadrant: ScreenQuadrant?
+    var activeSlot: Int? = nil
     var eyeConfidence: Double = 0
     var isCalibrated = false
     var calibrationSamples: Int = 0
@@ -20,13 +23,16 @@ final class AppState {
 
     // MARK: - Terminal
     var isTerminalSetup = false
-    var focusedQuadrant: ScreenQuadrant?
+    var focusedSlot: Int? = nil
+    var dwellingSlot: Int? = nil
+    var terminalSlots: [TerminalSlot] = []
+    var terminalGridColumns: Int = 2
+    var terminalGridRows: Int = 2
     var preferredTerminal: PreferredTerminal = .iTerm2
     var terminalLaunchCommand: String = "claude --dangerously-skip-permissions"
     var terminalSetupMode: TerminalSetupMode = .adoptExisting
 
     // MARK: - Dwell Progress
-    var dwellingQuadrant: ScreenQuadrant?
     var dwellProgress: Double = 0
 
     // MARK: - Settings
@@ -48,6 +54,10 @@ final class AppState {
     var micSensitivity: Double = 0.01
     var selectedMicDeviceUID: String = ""   // empty = system default
     var availableMics: [(uid: String, name: String)] = []
+    var selectedCameraDeviceID: String = ""  // empty = system default
+    var availableCameras: [(uid: String, name: String)] = []
+    var selectedDisplayID: CGDirectDisplayID = CGMainDisplayID()
+    var availableDisplays: [(id: CGDirectDisplayID, name: String)] = []
     var overlayIconSize: Double = 1.0
     var fusionDotSize: Double = 6.0
     var smoothedCircleSize: Double = 12.0
@@ -132,6 +142,32 @@ final class AppState {
         if winkDiagnosticLog.count > 8 {
             winkDiagnosticLog.removeFirst(winkDiagnosticLog.count - 8)
         }
+    }
+
+    func refreshAvailableDisplays() {
+        availableDisplays = NSScreen.screens.compactMap { screen in
+            guard let id = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID
+            else { return nil }
+            return (id: id, name: screen.localizedName)
+        }
+        if !availableDisplays.contains(where: { $0.id == selectedDisplayID }) {
+            selectedDisplayID = CGMainDisplayID()
+        }
+    }
+
+    func refreshAvailableCameras() {
+        let types: [AVCaptureDevice.DeviceType]
+        if #available(macOS 14.0, *) {
+            types = [.builtInWideAngleCamera, .external]
+        } else {
+            types = [.builtInWideAngleCamera, .externalUnknown]
+        }
+        let session = AVCaptureDevice.DiscoverySession(
+            deviceTypes: types,
+            mediaType: .video,
+            position: .unspecified
+        )
+        availableCameras = session.devices.map { (uid: $0.uniqueID, name: $0.localizedName) }
     }
 
     /// Writes current tunable settings to a JSON file in the project source tree.
@@ -309,6 +345,41 @@ final class AppState {
         if let v = dict["showDictationDisplay"] as? Bool { showDictationDisplay = v }
         if let v = dict["showWinkOverlay"] as? Bool { showWinkOverlay = v }
         if let v = dict["showCommandFlash"] as? Bool { showCommandFlash = v }
+    }
+}
+
+struct TerminalSlot: Identifiable, Codable {
+    let id: Int
+    var normalizedRect: CGRect
+    var label: String
+
+    private enum CodingKeys: String, CodingKey {
+        case id, normalizedRect, label
+    }
+
+    init(id: Int, normalizedRect: CGRect, label: String) {
+        self.id = id
+        self.normalizedRect = normalizedRect
+        self.label = label
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(Int.self, forKey: .id)
+        label = try c.decode(String.self, forKey: .label)
+        let arr = try c.decode([Double].self, forKey: .normalizedRect)
+        normalizedRect = arr.count == 4
+            ? CGRect(x: arr[0], y: arr[1], width: arr[2], height: arr[3])
+            : .zero
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(label, forKey: .label)
+        try c.encode([normalizedRect.origin.x, normalizedRect.origin.y,
+                      normalizedRect.size.width, normalizedRect.size.height],
+                     forKey: .normalizedRect)
     }
 }
 

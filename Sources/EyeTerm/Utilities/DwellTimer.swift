@@ -1,15 +1,15 @@
 import Foundation
 
 final class DwellTimer {
-    private var trackingQuadrant: ScreenQuadrant?
+    private var trackingSlot: Int?
     private var trackingStart: Date?
     private var hysteresisCleared = false
-    private var confirmedQuadrant: ScreenQuadrant?
+    private var confirmedSlot: Int?
 
     var dwellThreshold: TimeInterval
     var hysteresisDelay: TimeInterval
-    var onDwellConfirmed: ((ScreenQuadrant) -> Void)?
-    var onDwellProgress: ((ScreenQuadrant, Double) -> Void)?
+    var onDwellConfirmed: ((Int) -> Void)?
+    var onDwellProgress: ((Int, Double) -> Void)?
 
     /// Total time from first gaze frame to confirmation.
     private var totalTime: TimeInterval { hysteresisDelay + dwellThreshold }
@@ -19,41 +19,41 @@ final class DwellTimer {
         self.hysteresisDelay = hysteresisDelay
     }
 
-    func update(quadrant: ScreenQuadrant?) {
-        guard let quadrant = quadrant else {
+    func update(slot: Int?) {
+        guard let slot = slot else {
             reset()
             return
         }
 
-        if quadrant == trackingQuadrant {
-            // Same quadrant — report unified progress across hysteresis + dwell
-            guard let start = trackingStart, quadrant != confirmedQuadrant else { return }
+        if slot == trackingSlot {
+            // Same slot — report unified progress across hysteresis + dwell
+            guard let start = trackingStart, slot != confirmedSlot else { return }
             let elapsed = Date().timeIntervalSince(start)
             let progress = min(elapsed / totalTime, 1.0)
-            onDwellProgress?(quadrant, progress)
+            onDwellProgress?(slot, progress)
 
             if !hysteresisCleared && elapsed >= hysteresisDelay {
                 hysteresisCleared = true
             }
 
             if elapsed >= totalTime {
-                confirmedQuadrant = quadrant
-                onDwellConfirmed?(quadrant)
+                confirmedSlot = slot
+                onDwellConfirmed?(slot)
             }
         } else {
-            // New quadrant — start tracking immediately
-            trackingQuadrant = quadrant
+            // New slot — start tracking immediately
+            trackingSlot = slot
             trackingStart = Date()
             hysteresisCleared = false
-            confirmedQuadrant = nil
-            onDwellProgress?(quadrant, 0)
+            confirmedSlot = nil
+            onDwellProgress?(slot, 0)
         }
     }
 
     func reset() {
-        trackingQuadrant = nil
+        trackingSlot = nil
         trackingStart = nil
         hysteresisCleared = false
-        confirmedQuadrant = nil
+        confirmedSlot = nil
     }
 }

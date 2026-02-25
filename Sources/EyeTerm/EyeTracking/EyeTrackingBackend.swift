@@ -12,7 +12,7 @@ protocol EyeTrackingBackend: AnyObject {
     var isRunning: Bool { get }
     var activeCaptureSession: AVCaptureSession? { get }
 
-    var onEyeUpdate: ((ScreenQuadrant?, Double) -> Void)? { get set }
+    var onEyeUpdate: ((CGPoint?, Double) -> Void)? { get set }
     var onRawEyePoint: ((CGPoint) -> Void)? { get set }
     var onCalibratedEyePoint: ((CGPoint) -> Void)? { get set }
     var onSmoothedEyePoint: ((CGPoint) -> Void)? { get set }

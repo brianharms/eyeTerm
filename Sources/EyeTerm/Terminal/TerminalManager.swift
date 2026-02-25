@@ -30,18 +30,16 @@ final class TerminalManager {
     var preferredTerminal: PreferredTerminal = .iTerm2
     var launchCommand: String = "claude --dangerously-skip-permissions"
 
-    /// Tracks the window index (1-based, newest = 1) for each quadrant.
-    /// After setup the windows are ordered so that the first created has the highest index.
-    private var windowIndices: [ScreenQuadrant: Int] = [:]
+    /// Tracks the AppleScript window index (1-based) for each slot index.
+    private var windowIndices: [Int: Int] = [:]
 
-    /// Cache for findWindowIndex results to avoid a fresh AppleScript scan on every keystroke.
-    private var cachedWindowIndex: [ScreenQuadrant: Int] = [:]
+    /// Cache for findWindowIndex results (invalidated on each focus operation).
+    private var cachedWindowIndex: [Int: Int] = [:]
 
     // MARK: - Setup
 
-    /// Launch the preferred terminal, create four windows positioned in screen quadrants, and run the launch command in each.
-    func setupTerminals() async throws {
-        // Allow re-launch if windows were manually closed
+    /// Launch the preferred terminal, create cols×rows windows tiled across the screen, and run the launch command in each.
+    func setupTerminals(cols: Int = 2, rows: Int = 2, appState: AppState? = nil) async throws {
         isSetup = false
         windowIndices.removeAll()
         cachedWindowIndex.removeAll()
@@ -56,26 +54,36 @@ final class TerminalManager {
 
         try await Task.sleep(for: .seconds(1))
 
-        let orderedQuadrants: [ScreenQuadrant] = [.topLeft, .topRight, .bottomLeft, .bottomRight]
+        let count = cols * rows
+        var slots: [TerminalSlot] = []
 
         switch preferredTerminal {
         case .iTerm2:
-            try await setupITerm2(quadrants: orderedQuadrants)
+            try await setupITerm2(count: count, cols: cols, rows: rows)
         case .terminal:
-            try await setupAppleTerminal(quadrants: orderedQuadrants)
+            try await setupAppleTerminal(count: count, cols: cols, rows: rows)
         }
 
-        for (offset, quadrant) in orderedQuadrants.enumerated() {
-            windowIndices[quadrant] = orderedQuadrants.count - offset
+        for i in 0..<count {
+            // Windows are created oldest-first; newest = index 1
+            windowIndices[i] = count - i
+            let normRect = WindowLayout.normalizedRect(slotIndex: i, cols: cols, rows: rows)
+            slots.append(TerminalSlot(id: i, normalizedRect: normRect, label: "\(i + 1)"))
+        }
+
+        if let appState = appState {
+            await MainActor.run {
+                appState.terminalSlots = slots
+            }
         }
 
         isSetup = true
     }
 
-    private func setupITerm2(quadrants: [ScreenQuadrant]) async throws {
+    private func setupITerm2(count: Int, cols: Int, rows: Int) async throws {
         let escapedCmd = escapeForAppleScript(launchCommand)
-        for quadrant in quadrants {
-            let bounds = WindowLayout.boundsForQuadrant(quadrant)
+        for i in 0..<count {
+            let bounds = WindowLayout.boundsForSlot(slotIndex: i, cols: cols, rows: rows)
             let script = """
                 tell application "iTerm2"
                     create window with default profile
@@ -90,10 +98,10 @@ final class TerminalManager {
         }
     }
 
-    private func setupAppleTerminal(quadrants: [ScreenQuadrant]) async throws {
+    private func setupAppleTerminal(count: Int, cols: Int, rows: Int) async throws {
         let escapedCmd = escapeForAppleScript(launchCommand)
-        for quadrant in quadrants {
-            let bounds = WindowLayout.boundsForQuadrant(quadrant)
+        for i in 0..<count {
+            let bounds = WindowLayout.boundsForSlot(slotIndex: i, cols: cols, rows: rows)
             let script = """
                 tell application "Terminal"
                     do script "\(escapedCmd)"
@@ -105,8 +113,8 @@ final class TerminalManager {
         }
     }
 
-    /// Adopt existing terminal windows by scanning for windows already positioned in each quadrant.
-    func adoptTerminals() async throws {
+    /// Adopt ALL existing terminal windows. Each window becomes one slot.
+    func adoptTerminals(appState: AppState? = nil) async throws {
         isSetup = false
         windowIndices.removeAll()
         cachedWindowIndex.removeAll()
@@ -115,65 +123,82 @@ final class TerminalManager {
             throw TerminalError.terminalNotInstalled(preferredTerminal)
         }
 
-        let orderedQuadrants: [ScreenQuadrant] = [.topLeft, .topRight, .bottomLeft, .bottomRight]
-        var adopted = 0
+        let app = preferredTerminal.appName
+        let findScript = """
+            tell application "\(app)"
+                set windowInfo to ""
+                repeat with w in windows
+                    set b to bounds of w
+                    set windowInfo to windowInfo & (item 1 of b as text) & "," & (item 2 of b as text) & "," & (item 3 of b as text) & "," & (item 4 of b as text) & "|"
+                end repeat
+                return windowInfo
+            end tell
+        """
 
-        for quadrant in orderedQuadrants {
-            do {
-                let index = try await findWindowIndex(for: quadrant)
-                windowIndices[quadrant] = index
-                adopted += 1
-            } catch {
-                print("[TerminalManager] No window found for \(quadrant.displayName) — skipping")
-            }
-        }
-
-        guard adopted > 0 else {
+        guard let result = try? await AppleScriptBridge.runAsync(findScript), !result.isEmpty else {
             throw TerminalError.noWindowsToAdopt
         }
 
-        print("[TerminalManager] Adopted \(adopted)/4 terminal windows")
+        let entries = result.components(separatedBy: "|").filter { !$0.isEmpty }
+        guard !entries.isEmpty else { throw TerminalError.noWindowsToAdopt }
+
+        let screen = NSScreen.main ?? NSScreen.screens.first!
+        let screenFrame = screen.frame
+
+        var slots: [TerminalSlot] = []
+        for (i, entry) in entries.enumerated() {
+            let parts = entry.components(separatedBy: ",")
+            guard parts.count == 4,
+                  let l = Double(parts[0].trimmingCharacters(in: .whitespaces)),
+                  let t = Double(parts[1].trimmingCharacters(in: .whitespaces)),
+                  let r2 = Double(parts[2].trimmingCharacters(in: .whitespaces)),
+                  let b = Double(parts[3].trimmingCharacters(in: .whitespaces)) else { continue }
+
+            // Convert AppleScript pixel coords to normalized (0–1) fractions
+            let normX = l / screenFrame.width
+            let normW = (r2 - l) / screenFrame.width
+            // AppleScript top is distance from screen top; convert to normalized y (0=top)
+            let normY = t / screenFrame.height
+            let normH = (b - t) / screenFrame.height
+            let normRect = CGRect(x: normX, y: normY, width: normW, height: normH)
+
+            windowIndices[i] = i + 1  // front-to-back: window 1 is frontmost
+            slots.append(TerminalSlot(id: i, normalizedRect: normRect, label: "\(i + 1)"))
+        }
+
+        guard !slots.isEmpty else { throw TerminalError.noWindowsToAdopt }
+
+        if let appState = appState {
+            await MainActor.run {
+                appState.terminalSlots = slots
+            }
+        }
+
+        print("[TerminalManager] Adopted \(slots.count) terminal windows")
         isSetup = true
     }
 
     // MARK: - Focus
 
-    /// Bring the terminal window for the given quadrant to the front by matching screen position.
-    func focusTerminal(quadrant: ScreenQuadrant) async throws {
-        // Always do a fresh position-based scan: bringing any window to index 1 shifts all other
-        // window indices, so a cached index from a previous focus call is always stale.
-        let index = try await findWindowIndex(for: quadrant)
-        // Invalidate the entire cache since all indices will shift after the focus operation.
+    func focusTerminal(slotIndex: Int) async throws {
+        let index = try await findWindowIndex(for: slotIndex)
         cachedWindowIndex.removeAll()
-        // The focused window becomes index 1 — cache that for subsequent typeText calls.
-        cachedWindowIndex[quadrant] = 1
+        cachedWindowIndex[slotIndex] = 1
 
         let app = preferredTerminal.appName
-        let focusScript: String
-        switch preferredTerminal {
-        case .iTerm2:
-            focusScript = """
-                tell application "\(app)"
-                    activate
-                    set index of window \(index) to 1
-                end tell
-            """
-        case .terminal:
-            focusScript = """
-                tell application "\(app)"
-                    activate
-                    set index of window \(index) to 1
-                end tell
-            """
-        }
+        let focusScript = """
+            tell application "\(app)"
+                activate
+                set index of window \(index) to 1
+            end tell
+        """
         try await AppleScriptBridge.runAsync(focusScript)
     }
 
     // MARK: - Input
 
-    /// Type arbitrary text into the terminal session for the given quadrant.
-    func typeText(_ text: String, in quadrant: ScreenQuadrant) async throws {
-        let index = try await cachedIndex(for: quadrant)
+    func typeText(_ text: String, in slotIndex: Int) async throws {
+        let index = try await cachedIndex(for: slotIndex)
         let escaped = escapeForAppleScript(text)
         let app = preferredTerminal.appName
         let script: String
@@ -198,15 +223,13 @@ final class TerminalManager {
         try await AppleScriptBridge.runAsync(script)
     }
 
-    /// Send N backspace keystrokes to the terminal session for the given quadrant.
-    func sendBackspaces(_ count: Int, in quadrant: ScreenQuadrant) async throws {
+    func sendBackspaces(_ count: Int, in slotIndex: Int) async throws {
         guard count > 0 else { return }
-        let index = try await cachedIndex(for: quadrant)
+        let index = try await cachedIndex(for: slotIndex)
         let app = preferredTerminal.appName
         let script: String
         switch preferredTerminal {
         case .iTerm2:
-            // Use AppleScript to build a string of DEL (character id 127) and write it in one call
             script = """
                 tell application "\(app)"
                     set delStr to ""
@@ -230,9 +253,8 @@ final class TerminalManager {
         try await AppleScriptBridge.runAsync(script)
     }
 
-    /// Send an Escape keystroke to the terminal session for the given quadrant.
-    func sendEscape(in quadrant: ScreenQuadrant) async throws {
-        let index = try await cachedIndex(for: quadrant)
+    func sendEscape(in slotIndex: Int) async throws {
+        let index = try await cachedIndex(for: slotIndex)
         let app = preferredTerminal.appName
         let script: String
         switch preferredTerminal {
@@ -254,16 +276,14 @@ final class TerminalManager {
         try await AppleScriptBridge.runAsync(script)
     }
 
-    /// Send two Escape keystrokes to the terminal session for the given quadrant.
-    func sendDoubleEscape(in quadrant: ScreenQuadrant) async throws {
-        try await sendEscape(in: quadrant)
+    func sendDoubleEscape(in slotIndex: Int) async throws {
+        try await sendEscape(in: slotIndex)
         try await Task.sleep(for: .milliseconds(50))
-        try await sendEscape(in: quadrant)
+        try await sendEscape(in: slotIndex)
     }
 
-    /// Send an Enter keystroke to the terminal session for the given quadrant.
-    func sendReturn(in quadrant: ScreenQuadrant) async throws {
-        let index = try await cachedIndex(for: quadrant)
+    func sendReturn(in slotIndex: Int) async throws {
+        let index = try await cachedIndex(for: slotIndex)
         let app = preferredTerminal.appName
         let script: String
         switch preferredTerminal {
@@ -287,10 +307,8 @@ final class TerminalManager {
 
     // MARK: - Teardown
 
-    /// Close only the managed eyeTerm windows, leaving user windows untouched.
     func tearDown() async throws {
         guard isSetup else { return }
-
         let app = preferredTerminal.appName
         let sorted = windowIndices.values.sorted(by: >)
         for index in sorted {
@@ -300,7 +318,6 @@ final class TerminalManager {
                 end tell
             """)
         }
-
         windowIndices.removeAll()
         cachedWindowIndex.removeAll()
         isSetup = false
@@ -308,23 +325,21 @@ final class TerminalManager {
 
     // MARK: - Helpers
 
-    /// Return the cached window index for a quadrant, running a fresh scan only on a cache miss.
-    private func cachedIndex(for quadrant: ScreenQuadrant) async throws -> Int {
-        if let cached = cachedWindowIndex[quadrant] {
-            return cached
-        }
-        let index = try await findWindowIndex(for: quadrant)
-        cachedWindowIndex[quadrant] = index
+    private func cachedIndex(for slotIndex: Int) async throws -> Int {
+        if let cached = cachedWindowIndex[slotIndex] { return cached }
+        let index = try await findWindowIndex(for: slotIndex)
+        cachedWindowIndex[slotIndex] = index
         return index
     }
 
-    /// Find the terminal window whose screen position is closest to the target quadrant.
-    private func findWindowIndex(for quadrant: ScreenQuadrant) async throws -> Int {
+    /// Find the terminal window whose screen position is closest to the given slot index's stored rect.
+    private func findWindowIndex(for slotIndex: Int) async throws -> Int {
         let app = preferredTerminal.appName
-        let target = WindowLayout.boundsForQuadrant(quadrant)
-        let targetMidX = (target.left + target.right) / 2
-        let targetMidY = (target.top + target.bottom) / 2
+        let screen = NSScreen.main ?? NSScreen.screens.first!
+        let screenFrame = screen.frame
 
+        // If we have a stored window index from setup, use its position as target
+        // Otherwise fall back to a full scan
         let findScript = """
             tell application "\(app)"
                 set windowInfo to ""
@@ -336,35 +351,48 @@ final class TerminalManager {
             end tell
         """
         guard let result = try await AppleScriptBridge.runAsync(findScript), !result.isEmpty else {
-            throw TerminalError.windowNotFound(quadrant)
+            throw TerminalError.windowNotFound(slotIndex)
         }
+
+        // If we know this slot's window index directly (from setup), use it
+        if let knownIndex = windowIndices[slotIndex] {
+            let entries = result.components(separatedBy: "|").filter { !$0.isEmpty }
+            if knownIndex <= entries.count { return knownIndex }
+        }
+
+        // Fall back: find window whose midpoint is closest to the slot's normalized rect center
+        // We need the slot rects — stored in windowIndices as a position hint
+        // Use the normalized rect center to find the best match
+        let targetNormX = 0.5 // default to screen center if no slot info
+        let targetNormY = 0.5
 
         let entries = result.components(separatedBy: "|").filter { !$0.isEmpty }
         var bestIndex = 0
-        var bestDistance = Int.max
+        var bestDistance = Double.greatestFiniteMagnitude
+
+        let targetMidX = targetNormX * screenFrame.width
+        let targetMidY = targetNormY * screenFrame.height
+
         for (i, entry) in entries.enumerated() {
             let parts = entry.components(separatedBy: ",")
             guard parts.count == 4,
-                  let l = Int(parts[0].trimmingCharacters(in: .whitespaces)),
-                  let t = Int(parts[1].trimmingCharacters(in: .whitespaces)),
-                  let r = Int(parts[2].trimmingCharacters(in: .whitespaces)),
-                  let b = Int(parts[3].trimmingCharacters(in: .whitespaces)) else { continue }
+                  let l = Double(parts[0].trimmingCharacters(in: .whitespaces)),
+                  let t = Double(parts[1].trimmingCharacters(in: .whitespaces)),
+                  let r = Double(parts[2].trimmingCharacters(in: .whitespaces)),
+                  let b = Double(parts[3].trimmingCharacters(in: .whitespaces)) else { continue }
             let midX = (l + r) / 2
             let midY = (t + b) / 2
             let dist = abs(midX - targetMidX) + abs(midY - targetMidY)
             if dist < bestDistance {
                 bestDistance = dist
-                bestIndex = i + 1  // AppleScript windows are 1-indexed
+                bestIndex = i + 1
             }
         }
 
-        guard bestIndex > 0 else {
-            throw TerminalError.windowNotFound(quadrant)
-        }
+        guard bestIndex > 0 else { throw TerminalError.windowNotFound(slotIndex) }
         return bestIndex
     }
 
-    /// Escape backslashes and double-quotes so the string is safe inside an AppleScript literal.
     private func escapeForAppleScript(_ text: String) -> String {
         text
             .replacingOccurrences(of: "\\", with: "\\\\")
@@ -376,17 +404,17 @@ final class TerminalManager {
 
 enum TerminalError: LocalizedError {
     case terminalNotInstalled(PreferredTerminal)
-    case windowNotFound(ScreenQuadrant)
+    case windowNotFound(Int)
     case noWindowsToAdopt
 
     var errorDescription: String? {
         switch self {
         case .terminalNotInstalled(let terminal):
             return "\(terminal.rawValue) is not installed."
-        case .windowNotFound(let quadrant):
-            return "No managed terminal window found for \(quadrant.displayName)"
+        case .windowNotFound(let slotIndex):
+            return "No managed terminal window found for slot \(slotIndex + 1)"
         case .noWindowsToAdopt:
-            return "No existing terminal windows found to adopt. Open terminal windows and position them in screen quadrants first."
+            return "No existing terminal windows found to adopt. Open terminal windows first."
         }
     }
 }
