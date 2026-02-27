@@ -338,25 +338,24 @@ private struct SharedOverlayContent: View {
     @Environment(AppState.self) private var appState
 
     var body: some View {
-        // Live dictation display — filtered to complete words, inside focused slot
+        // Live dictation display — per-slot bubbles pinned to each slot's rect
         if appState.showDictationDisplay {
-            let words = appState.partialTranscription.components(separatedBy: " ")
-            let displayText = words.count > 1 ? words.dropLast().joined(separator: " ") : ""
-            if !displayText.isEmpty {
-                let dictRect: CGRect = {
-                    if let slotID = appState.focusedSlot,
-                       let slot = appState.terminalSlots.first(where: { $0.id == slotID }) {
-                        return slotRect(slot, size: size)
-                    }
-                    return CGRect(x: 0, y: 0, width: size.width, height: size.height)
-                }()
-                Text(displayText)
-                    .font(.system(size: 28, weight: .bold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
-                    .background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 12))
-                    .position(x: dictRect.midX, y: dictRect.maxY - 80)
+            ForEach(appState.terminalSlots) { slot in
+                if let partial = appState.slotPartialTranscriptions[slot.id],
+                   partial.split(separator: " ").count >= 2 {
+                    let words = partial.split(separator: " ")
+                    let displayText = words.dropLast().joined(separator: " ")
+                    let rect = slotRect(slot, size: size)
+                    Text(displayText)
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: rect.width - 80)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+                        .background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 12))
+                        .position(x: rect.midX, y: rect.maxY - 80)
+                }
             }
         }
 

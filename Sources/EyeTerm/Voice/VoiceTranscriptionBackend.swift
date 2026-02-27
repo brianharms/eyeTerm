@@ -1,8 +1,8 @@
 import Foundation
 
 enum VoiceBackend: String, CaseIterable, Identifiable {
+    case sfSpeech = "Apple Dictation"
     case whisperKit = "WhisperKit"
-    case whisperCpp = "whisper.cpp"
 
     var id: String { rawValue }
 }
@@ -31,6 +31,7 @@ enum VoiceModelState {
 
 enum VoiceEngineError: LocalizedError {
     case microphoneUnavailable
+    case speechRecognitionDenied
     case modelInitializationFailed(Error)
     case audioFormatError
 
@@ -38,6 +39,8 @@ enum VoiceEngineError: LocalizedError {
         switch self {
         case .microphoneUnavailable:
             return "Microphone access is required for voice input."
+        case .speechRecognitionDenied:
+            return "Speech Recognition permission denied. Go to System Settings → Privacy & Security → Speech Recognition and enable eyeTerm."
         case .modelInitializationFailed(let error):
             return "Failed to initialize voice model: \(error.localizedDescription)"
         case .audioFormatError:

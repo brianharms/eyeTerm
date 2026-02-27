@@ -117,6 +117,11 @@ final class WhisperKitBackend: VoiceTranscriptionBackend {
         "thank you for watching.", "you", "you.", "hmm", "hmm.", "hm", "hm.",
         "bye", "bye.", "bye-bye", "bye-bye.", "okay", "okay.", "ok", "ok.",
         ".", "..", "...", "....", " ", "♪", "♪♪",
+        // WhisperKit special token artifacts (raw or decoded)
+        "start of transcript", "start of transcript.", "[start of transcript]",
+        "end of transcript", "end of transcript.", "[end of transcript]",
+        "no speech", "[no speech]", "no audio", "inaudible", "[inaudible]",
+        "silence", "[silence]", "music", "[music]", "applause", "[applause]",
     ]
 
     private func isHallucination(_ text: String) -> Bool {

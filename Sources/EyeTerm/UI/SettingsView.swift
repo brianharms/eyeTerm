@@ -371,7 +371,7 @@ struct SettingsView: View {
                 described("Eye aperture below this = \"closed\". Watch Live Aperture while closing one eye to find your value.") {
                     LabeledContent("Closed Threshold") {
                         HStack {
-                            Slider(value: $state.winkClosedThreshold, in: 0.05...0.3, step: 0.01)
+                            Slider(value: $state.winkClosedThreshold, in: 0.05...0.6, step: 0.01)
                             Text("\(state.winkClosedThreshold, specifier: "%.2f")")
                                 .monospacedDigit()
                                 .frame(width: 36, alignment: .trailing)
@@ -384,6 +384,17 @@ struct SettingsView: View {
                         HStack {
                             Slider(value: $state.winkOpenThreshold, in: 0.1...0.5, step: 0.01)
                             Text("\(state.winkOpenThreshold, specifier: "%.2f")")
+                                .monospacedDigit()
+                                .frame(width: 36, alignment: .trailing)
+                        }
+                    }
+                }
+
+                described("Maximum aperture the non-winking eye may dip to before the gesture is rejected. Lower = stricter bilateral rejection. Separate from Open Threshold so calibration doesn't affect it.") {
+                    LabeledContent("Dip Threshold") {
+                        HStack {
+                            Slider(value: $state.winkDipThreshold, in: 0.05...1.00, step: 0.01)
+                            Text("\(state.winkDipThreshold, specifier: "%.2f")")
                                 .monospacedDigit()
                                 .frame(width: 36, alignment: .trailing)
                         }
@@ -470,7 +481,7 @@ struct SettingsView: View {
                           systemImage: state.isVoiceActive ? "mic.slash" : "mic")
                 }
 
-                described("WhisperKit uses CoreML + Neural Engine (fast). whisper.cpp is CPU-only (slower, no framework deps).") {
+                described("Apple Dictation uses Siri's on-device model — real-time self-correcting partials, no model download. WhisperKit uses CoreML + Neural Engine — accurate but batch-mode.") {
                     Picker("Voice Engine", selection: $state.voiceBackend) {
                         ForEach(VoiceBackend.allCases) { backend in
                             Text(backend.rawValue).tag(backend)
@@ -603,15 +614,16 @@ struct SettingsView: View {
                     }
                 }
 
-                if !state.partialTranscription.isEmpty {
-                    Text(state.partialTranscription)
+                let activePartial = appState.slotPartialTranscriptions.values.first(where: { !$0.isEmpty }) ?? ""
+                if !activePartial.isEmpty {
+                    Text(activePartial)
                         .font(.caption)
                         .foregroundStyle(.blue)
                         .italic()
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
-                if state.transcriptionHistory.isEmpty && state.partialTranscription.isEmpty {
+                if state.transcriptionHistory.isEmpty && activePartial.isEmpty {
                     Text("Listening...")
                         .font(.caption)
                         .foregroundStyle(.secondary)

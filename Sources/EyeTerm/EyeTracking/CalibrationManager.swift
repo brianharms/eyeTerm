@@ -31,6 +31,8 @@ final class CalibrationManager {
     private static let parallaxCorrXKey = "ParallaxCorrX"
     private static let parallaxCorrYKey = "ParallaxCorrY"
 
+    private static let calibrationFileURL = URL(fileURLWithPath: "/Users/brianharms/Desktop/Claude Projects/eyeTerm/calibration.json")
+
     // MARK: - Public state
 
     private(set) var isCalibrated = false
@@ -167,6 +169,7 @@ final class CalibrationManager {
         UserDefaults.standard.removeObject(forKey: Self.pupilDefaultsKey)
         UserDefaults.standard.removeObject(forKey: Self.parallaxCorrXKey)
         UserDefaults.standard.removeObject(forKey: Self.parallaxCorrYKey)
+        try? FileManager.default.removeItem(at: Self.calibrationFileURL)
     }
 
     // MARK: - Parallax coefficient learning
@@ -267,6 +270,7 @@ final class CalibrationManager {
         saveCalibration(pupilT, key: Self.pupilDefaultsKey)
         UserDefaults.standard.set(corrX, forKey: Self.parallaxCorrXKey)
         UserDefaults.standard.set(corrY, forKey: Self.parallaxCorrYKey)
+        saveCalibrationFile(head: headT, pupil: pupilT, corrX: corrX, corrY: corrY)
         print("[CalibrationManager] Parallax coefficients: corrX=\(corrX), corrY=\(corrY)")
         onCalibrationComplete?(CalibrationResult(
             headTransform: headT,
@@ -347,7 +351,42 @@ final class CalibrationManager {
         UserDefaults.standard.set(values, forKey: key)
     }
 
+    private func saveCalibrationFile(head: CGAffineTransform, pupil: CGAffineTransform, corrX: Double, corrY: Double) {
+        let dict: [String: Any] = [
+            "headTransform": [head.a, head.b, head.c, head.d, head.tx, head.ty].map { Double($0) },
+            "pupilTransform": [pupil.a, pupil.b, pupil.c, pupil.d, pupil.tx, pupil.ty].map { Double($0) },
+            "parallaxCorrX": corrX,
+            "parallaxCorrY": corrY
+        ]
+        do {
+            let data = try JSONSerialization.data(withJSONObject: dict, options: .prettyPrinted)
+            try data.write(to: Self.calibrationFileURL)
+            print("[CalibrationManager] Saved calibration to \(Self.calibrationFileURL.path)")
+        } catch {
+            print("[CalibrationManager] Failed to save calibration file: \(error)")
+        }
+    }
+
     private func loadSavedCalibration() {
+        // Try project file first (survives app rebuilds)
+        if let data = try? Data(contentsOf: Self.calibrationFileURL),
+           let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let headValues = dict["headTransform"] as? [Double], headValues.count == 6,
+           let pupilValues = dict["pupilTransform"] as? [Double], pupilValues.count == 6 {
+            headTransform = CGAffineTransform(a: CGFloat(headValues[0]), b: CGFloat(headValues[1]),
+                                              c: CGFloat(headValues[2]), d: CGFloat(headValues[3]),
+                                              tx: CGFloat(headValues[4]), ty: CGFloat(headValues[5]))
+            pupilTransform = CGAffineTransform(a: CGFloat(pupilValues[0]), b: CGFloat(pupilValues[1]),
+                                               c: CGFloat(pupilValues[2]), d: CGFloat(pupilValues[3]),
+                                               tx: CGFloat(pupilValues[4]), ty: CGFloat(pupilValues[5]))
+            savedParallaxCorrX = dict["parallaxCorrX"] as? Double ?? 0.0
+            savedParallaxCorrY = dict["parallaxCorrY"] as? Double ?? 0.0
+            isCalibrated = true
+            print("[CalibrationManager] Loaded calibration from project file")
+            return
+        }
+
+        // Fall back to UserDefaults
         headTransform = loadTransform(key: Self.headDefaultsKey)
         pupilTransform = loadTransform(key: Self.pupilDefaultsKey)
         savedParallaxCorrX = UserDefaults.standard.double(forKey: Self.parallaxCorrXKey)

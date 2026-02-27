@@ -25,6 +25,7 @@ final class BlinkGestureDetector {
 
     var closedThreshold: Double = 0.15
     var openThreshold: Double = 0.25
+    var winkDipThreshold: Double = 0.3
     var minWinkDuration: TimeInterval = 0.2
     var maxWinkDuration: TimeInterval = 0.5
     var bilateralRejectWindow: TimeInterval = 0.15
@@ -206,8 +207,8 @@ final class BlinkGestureDetector {
             return
         }
 
-        // Reject if the other eye dipped below openThreshold at any point during the wink.
-        if otherEyeMin < openThreshold {
+        // Reject if the other eye dipped below winkDipThreshold at any point during the wink.
+        if otherEyeMin < winkDipThreshold {
             onDiagnosticEvent?(WinkDiagnosticEvent(side: side, duration: duration, winkEyeMin: winkEyeMin, otherEyeMin: otherEyeMin, outcome: .otherEyeDipped(otherMin: otherEyeMin), timestamp: now))
             return
         }

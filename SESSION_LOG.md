@@ -4,6 +4,37 @@ This file tracks session handoffs so the next Claude Code instance can quickly g
 
 ---
 
+## Session — 2026-02-26 18:30
+
+### Goal
+Increase max slider range for Closed Threshold and Dip Threshold in wink gesture settings. Rebuild and reinstall app.
+
+### Accomplished
+- **Closed Threshold slider max**: `0.3 → 0.6` in `SettingsView.swift`
+- **Dip Threshold slider max**: `0.50 → 1.00` in `SettingsView.swift`
+- Deleted old `/Applications/eyeTerm.app`, rebuilt (BUILD SUCCEEDED), installed to `/Applications/eyeTerm.app`, launched
+
+### In Progress / Incomplete
+- Runtime testing of the dynamic slot system (from prior session) still pending
+
+### Key Decisions
+- User wanted 2x headroom on both thresholds — some users may need higher aperture values depending on their camera/face geometry
+
+### Files Changed
+- `Sources/EyeTerm/UI/SettingsView.swift` — updated two `Slider(in:)` ranges
+
+### Known Issues
+- None new
+
+### Running Services
+- eyeTerm.app running from `/Applications/eyeTerm.app`
+
+### Next Steps
+- Test wink detection with the wider threshold ranges
+- Test dynamic terminal slots: 2×2 and 3×2 grid creation, adopt existing terminals, verify gaze in empty space gives no slot focus
+
+---
+
 ## Session — 2026-02-24 ~12:00
 
 ### Goal

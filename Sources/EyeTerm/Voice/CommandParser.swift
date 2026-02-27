@@ -9,8 +9,8 @@ final class CommandParser {
     var enableNormalization: Bool = true
     var executeKeyword: String = "run it"
 
-    /// Regex that matches text inside square brackets or parentheses (e.g. [inaudible], (silence)).
-    private static let bracketedPattern = try! NSRegularExpression(pattern: "\\[.*?\\]|\\(.*?\\)", options: [])
+    /// Regex that matches text inside square brackets, parentheses, or WhisperKit angle-bracket tokens (e.g. [inaudible], (silence), <|startoftranscript|>).
+    private static let bracketedPattern = try! NSRegularExpression(pattern: "\\[.*?\\]|\\(.*?\\)|<\\|.*?\\|>", options: [])
 
     private static let windowActionPhrases: [String: WindowAction] = [
         "close it": .close,

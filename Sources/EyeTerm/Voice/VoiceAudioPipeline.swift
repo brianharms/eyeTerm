@@ -6,7 +6,7 @@ final class VoiceAudioPipeline {
     var onSpeechSegmentReady: (([Float]) -> Void)?
     var onInterimAudioReady: (([Float]) -> Void)?
     var silenceThreshold: Float = 0.01
-    var silenceDuration: TimeInterval = 0.5
+    var silenceDuration: TimeInterval = 0.4
     var interimInterval: TimeInterval = 0.2
     var inputDeviceUID: String?   // nil = system default
 

@@ -37,7 +37,7 @@ final class AppState {
 
     // MARK: - Settings
     var trackingBackend: TrackingBackend = .mediaPipe
-    var voiceBackend: VoiceBackend = .whisperKit
+    var voiceBackend: VoiceBackend = .sfSpeech
     var dwellTimeThreshold: TimeInterval = 1.0
     var hysteresisDelay: TimeInterval = 0.3
     var whisperModel: String = "small.en"
@@ -49,7 +49,7 @@ final class AppState {
     var parallaxCorrX: Double = 0.0
     var parallaxCorrY: Double = 0.0
     var headAmplification: Double = 3.0
-    var overlayMode: OverlayMode = .off
+    var overlayMode: OverlayMode = .subtle
     var debugSmoothing: Double = 0.15
     var micSensitivity: Double = 0.01
     var selectedMicDeviceUID: String = ""   // empty = system default
@@ -92,6 +92,7 @@ final class AppState {
     var maxWinkDuration: Double = 0.5
     var bilateralRejectWindow: Double = 0.1
     var winkCooldown: Double = 0.8
+    var winkDipThreshold: Double = 0.3
 
     // MARK: - Blink Gesture Diagnostics (not persisted)
     var leftEyeAperture: Double = 0
@@ -100,7 +101,7 @@ final class AppState {
     var winkDiagnosticLog: [WinkDiagnosticEvent] = []
 
     // MARK: - Transcription History
-    var partialTranscription: String = ""
+    var slotPartialTranscriptions: [Int: String] = [:]
     var transcriptionHistory: [(text: String, cleaned: String, timestamp: Date)] = []
 
     // MARK: - Eye Tracking Points (for overlay)
@@ -188,7 +189,6 @@ final class AppState {
             "parallaxCorrX": parallaxCorrX,
             "parallaxCorrY": parallaxCorrY,
             "headAmplification": headAmplification,
-            "overlayMode": overlayMode.rawValue,
             "debugSmoothing": debugSmoothing,
             "micSensitivity": micSensitivity,
             "selectedMicDeviceUID": selectedMicDeviceUID,
@@ -221,6 +221,7 @@ final class AppState {
             "showDictationDisplay": showDictationDisplay,
             "showWinkOverlay": showWinkOverlay,
             "showCommandFlash": showCommandFlash,
+            "winkDipThreshold": winkDipThreshold,
         ]
 
         guard let data = try? JSONSerialization.data(withJSONObject: settings, options: [.prettyPrinted, .sortedKeys]) else { return }
@@ -257,7 +258,6 @@ final class AppState {
             "parallaxCorrX": parallaxCorrX,
             "parallaxCorrY": parallaxCorrY,
             "headAmplification": headAmplification,
-            "overlayMode": overlayMode.rawValue,
             "debugSmoothing": debugSmoothing,
             "micSensitivity": micSensitivity,
             "selectedMicDeviceUID": selectedMicDeviceUID,
@@ -290,8 +290,15 @@ final class AppState {
             "showDictationDisplay": showDictationDisplay,
             "showWinkOverlay": showWinkOverlay,
             "showCommandFlash": showCommandFlash,
+            "winkDipThreshold": winkDipThreshold,
         ]
-        guard let data = try? JSONSerialization.data(withJSONObject: settings, options: [.prettyPrinted, .sortedKeys]) else { return }
+        // Include calibration transforms from UserDefaults so they survive reinstalls.
+        var mutable = settings
+        let calibKeys = ["HeadCalibrationTransform", "PupilCalibrationTransform", "ParallaxCorrX", "ParallaxCorrY"]
+        for key in calibKeys {
+            if let v = UserDefaults.standard.object(forKey: key) { mutable[key] = v }
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: mutable, options: [.prettyPrinted, .sortedKeys]) else { return }
         try? data.write(to: Self.settingsFileURL)
     }
 
@@ -312,7 +319,6 @@ final class AppState {
         if let v = dict["parallaxCorrX"] as? Double { parallaxCorrX = v }
         if let v = dict["parallaxCorrY"] as? Double { parallaxCorrY = v }
         if let v = dict["headAmplification"] as? Double { headAmplification = v }
-        if let v = dict["overlayMode"] as? Int, let e = OverlayMode(rawValue: v) { overlayMode = e }
         if let v = dict["debugSmoothing"] as? Double { debugSmoothing = v }
         if let v = dict["micSensitivity"] as? Double { micSensitivity = v }
         if let v = dict["selectedMicDeviceUID"] as? String { selectedMicDeviceUID = v }
@@ -345,6 +351,14 @@ final class AppState {
         if let v = dict["showDictationDisplay"] as? Bool { showDictationDisplay = v }
         if let v = dict["showWinkOverlay"] as? Bool { showWinkOverlay = v }
         if let v = dict["showCommandFlash"] as? Bool { showCommandFlash = v }
+        if let v = dict["winkDipThreshold"] as? Double { winkDipThreshold = v }
+
+        // Restore calibration transforms back to UserDefaults so CalibrationManager
+        // picks them up on next launch (it reads from UserDefaults on init).
+        if let v = dict["HeadCalibrationTransform"] { UserDefaults.standard.set(v, forKey: "HeadCalibrationTransform") }
+        if let v = dict["PupilCalibrationTransform"] { UserDefaults.standard.set(v, forKey: "PupilCalibrationTransform") }
+        if let v = dict["ParallaxCorrX"] as? Double { UserDefaults.standard.set(v, forKey: "ParallaxCorrX") }
+        if let v = dict["ParallaxCorrY"] as? Double { UserDefaults.standard.set(v, forKey: "ParallaxCorrY") }
     }
 }
 

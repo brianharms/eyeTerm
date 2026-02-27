@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		0DB4A3C57630F35A3CFBF16C /* EyeTermApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 915C9661B7BE6D6F164A0040 /* EyeTermApp.swift */; };
 		11B4270C21D2B0C26C63B9A8 /* WalkthroughCompleteStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BFBC423FEE5A6C24E35E6A4 /* WalkthroughCompleteStep.swift */; };
+		15CED4D680ECD2C1755F2C4A /* SFSpeechRecognizerBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A0A611BF41F365B165EE2A8 /* SFSpeechRecognizerBackend.swift */; };
 		208E503D5731C037797E241A /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F479EBA123EAD1D8AF8C083 /* AppState.swift */; };
 		21DB4BE7C28F9521BDB1E7DE /* AudioBufferManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADEDE3E5AF77B48EC6E6DE63 /* AudioBufferManager.swift */; };
 		21E42590DEEE0AD4D6380AA9 /* EyeTrackingBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED398BA8E1104FF3EA6FDB1E /* EyeTrackingBackend.swift */; };
@@ -72,6 +73,7 @@
 		3F4F4D8AEC89DDDF0B0772DE /* StreamingTranscriptionDiffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingTranscriptionDiffer.swift; sourceTree = "<group>"; };
 		41C5F3C5AD6CE43C62FA47DF /* MediaPipeSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaPipeSetupView.swift; sourceTree = "<group>"; };
 		55764B0C11E733EF0C9B98B6 /* StatusIndicatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusIndicatorView.swift; sourceTree = "<group>"; };
+		5A0A611BF41F365B165EE2A8 /* SFSpeechRecognizerBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SFSpeechRecognizerBackend.swift; sourceTree = "<group>"; };
 		678072609816BD61C3C33DE2 /* CommandParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandParser.swift; sourceTree = "<group>"; };
 		71E1392F765D378A74CF7B73 /* WalkthroughStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkthroughStep.swift; sourceTree = "<group>"; };
 		7660980D3A8CB84F2FA144DA /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -142,6 +144,7 @@
 			children = (
 				ADEDE3E5AF77B48EC6E6DE63 /* AudioBufferManager.swift */,
 				678072609816BD61C3C33DE2 /* CommandParser.swift */,
+				5A0A611BF41F365B165EE2A8 /* SFSpeechRecognizerBackend.swift */,
 				3F4F4D8AEC89DDDF0B0772DE /* StreamingTranscriptionDiffer.swift */,
 				ECCA4DEC47BDAE22F003D57A /* VoiceAudioPipeline.swift */,
 				00EE7448FBA6327EEFAA1E10 /* VoiceTranscriptionBackend.swift */,
@@ -397,6 +400,7 @@
 				2FD5635F3649CC705B35AFF2 /* OnboardingState.swift in Sources */,
 				33A4E80F68597EFAC64BE843 /* OverlayMode.swift in Sources */,
 				B2548DFF60D29E9704F8A6CE /* Permissions.swift in Sources */,
+				15CED4D680ECD2C1755F2C4A /* SFSpeechRecognizerBackend.swift in Sources */,
 				DC9159E94663C33CB6413AA7 /* SettingsView.swift in Sources */,
 				5E4182D1E79F3784A3801D12 /* StatusIndicatorView.swift in Sources */,
 				C6E168E849B551396511F6C3 /* StreamingTranscriptionDiffer.swift in Sources */,

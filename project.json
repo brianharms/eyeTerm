@@ -1,19 +1,25 @@
 {
-  "title": "Eye Term",
-  "description": null,
-  "screenshot": null,
-  "icon": "Sources/EyeTerm/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
-  "platform": "ios",
+  "name": "eyeTerm",
   "category": "app",
-  "tech": [
-    "Swift",
-    "Python"
+  "description": "Native macOS terminal application built with Swift.",
+  "about": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.\n\nExcepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Curabitur pretium tincidunt lacus, nec gravida ante porttitor sit amet. Nullam quis risus eget urna mollis ornare vel eu leo. Praesent commodo cursus magna, vel scelerisque nisl consectetur et.",
+  "starred": false,
+  "public": false,
+  "preview": null,
+  "github": null,
+  "tags": [
+    "swift",
+    "xcode",
+    "macos",
+    "terminal"
   ],
-  "status": "active",
-  "featured": false,
-  "color": "#F05138",
-  "links": {
-    "live": null,
-    "figma": null
+  "motion": {
+    "hoverSpeed": 1.0,
+    "hoverAmplitude": 0.15,
+    "spinAxes": [
+      "y"
+    ],
+    "spinSpeed": 0.3,
+    "cursorInfluence": 0.08
   }
 }

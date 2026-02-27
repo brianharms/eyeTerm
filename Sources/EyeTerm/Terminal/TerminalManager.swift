@@ -33,16 +33,20 @@ final class TerminalManager {
     /// Tracks the AppleScript window index (1-based) for each slot index.
     private var windowIndices: [Int: Int] = [:]
 
+    /// Normalized screen rect for each slot — used for position-based window matching.
+    private var slotNormRects: [Int: CGRect] = [:]
+
     /// Cache for findWindowIndex results (invalidated on each focus operation).
     private var cachedWindowIndex: [Int: Int] = [:]
 
     // MARK: - Setup
 
     /// Launch the preferred terminal, create cols×rows windows tiled across the screen, and run the launch command in each.
-    func setupTerminals(cols: Int = 2, rows: Int = 2, appState: AppState? = nil) async throws {
+    func setupTerminals(cols: Int = 2, rows: Int = 2, appState: AppState? = nil, screen: NSScreen? = nil) async throws {
         isSetup = false
         windowIndices.removeAll()
         cachedWindowIndex.removeAll()
+        slotNormRects.removeAll()
 
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: preferredTerminal.bundleIdentifier) else {
             throw TerminalError.terminalNotInstalled(preferredTerminal)
@@ -59,15 +63,16 @@ final class TerminalManager {
 
         switch preferredTerminal {
         case .iTerm2:
-            try await setupITerm2(count: count, cols: cols, rows: rows)
+            try await setupITerm2(count: count, cols: cols, rows: rows, screen: screen)
         case .terminal:
-            try await setupAppleTerminal(count: count, cols: cols, rows: rows)
+            try await setupAppleTerminal(count: count, cols: cols, rows: rows, screen: screen)
         }
 
         for i in 0..<count {
             // Windows are created oldest-first; newest = index 1
             windowIndices[i] = count - i
             let normRect = WindowLayout.normalizedRect(slotIndex: i, cols: cols, rows: rows)
+            slotNormRects[i] = normRect
             slots.append(TerminalSlot(id: i, normalizedRect: normRect, label: "\(i + 1)"))
         }
 
@@ -80,10 +85,10 @@ final class TerminalManager {
         isSetup = true
     }
 
-    private func setupITerm2(count: Int, cols: Int, rows: Int) async throws {
+    private func setupITerm2(count: Int, cols: Int, rows: Int, screen: NSScreen? = nil) async throws {
         let escapedCmd = escapeForAppleScript(launchCommand)
         for i in 0..<count {
-            let bounds = WindowLayout.boundsForSlot(slotIndex: i, cols: cols, rows: rows)
+            let bounds = WindowLayout.boundsForSlot(slotIndex: i, cols: cols, rows: rows, screen: screen)
             let script = """
                 tell application "iTerm2"
                     create window with default profile
@@ -98,10 +103,10 @@ final class TerminalManager {
         }
     }
 
-    private func setupAppleTerminal(count: Int, cols: Int, rows: Int) async throws {
+    private func setupAppleTerminal(count: Int, cols: Int, rows: Int, screen: NSScreen? = nil) async throws {
         let escapedCmd = escapeForAppleScript(launchCommand)
         for i in 0..<count {
-            let bounds = WindowLayout.boundsForSlot(slotIndex: i, cols: cols, rows: rows)
+            let bounds = WindowLayout.boundsForSlot(slotIndex: i, cols: cols, rows: rows, screen: screen)
             let script = """
                 tell application "Terminal"
                     do script "\(escapedCmd)"
@@ -118,6 +123,7 @@ final class TerminalManager {
         isSetup = false
         windowIndices.removeAll()
         cachedWindowIndex.removeAll()
+        slotNormRects.removeAll()
 
         guard NSWorkspace.shared.urlForApplication(withBundleIdentifier: preferredTerminal.bundleIdentifier) != nil else {
             throw TerminalError.terminalNotInstalled(preferredTerminal)
@@ -163,6 +169,7 @@ final class TerminalManager {
             let normRect = CGRect(x: normX, y: normY, width: normW, height: normH)
 
             windowIndices[i] = i + 1  // front-to-back: window 1 is frontmost
+            slotNormRects[i] = normRect
             slots.append(TerminalSlot(id: i, normalizedRect: normRect, label: "\(i + 1)"))
         }
 
@@ -332,14 +339,14 @@ final class TerminalManager {
         return index
     }
 
-    /// Find the terminal window whose screen position is closest to the given slot index's stored rect.
+    /// Find the terminal window whose screen position is closest to the stored rect for the given slot.
+    /// Always uses position-based matching — window indices shift after every focus/reorder operation,
+    /// so stored integer indices become stale immediately.
     private func findWindowIndex(for slotIndex: Int) async throws -> Int {
         let app = preferredTerminal.appName
         let screen = NSScreen.main ?? NSScreen.screens.first!
         let screenFrame = screen.frame
 
-        // If we have a stored window index from setup, use its position as target
-        // Otherwise fall back to a full scan
         let findScript = """
             tell application "\(app)"
                 set windowInfo to ""
@@ -354,24 +361,16 @@ final class TerminalManager {
             throw TerminalError.windowNotFound(slotIndex)
         }
 
-        // If we know this slot's window index directly (from setup), use it
-        if let knownIndex = windowIndices[slotIndex] {
-            let entries = result.components(separatedBy: "|").filter { !$0.isEmpty }
-            if knownIndex <= entries.count { return knownIndex }
-        }
-
-        // Fall back: find window whose midpoint is closest to the slot's normalized rect center
-        // We need the slot rects — stored in windowIndices as a position hint
-        // Use the normalized rect center to find the best match
-        let targetNormX = 0.5 // default to screen center if no slot info
-        let targetNormY = 0.5
-
         let entries = result.components(separatedBy: "|").filter { !$0.isEmpty }
+
+        // Position-based match using the stored normalized rect for this slot.
+        // This is robust against window reordering caused by AppleScript "set index".
+        let normRect = slotNormRects[slotIndex] ?? CGRect(x: 0.5, y: 0.5, width: 0, height: 0)
+        let targetMidX = normRect.midX * screenFrame.width
+        let targetMidY = normRect.midY * screenFrame.height
+
         var bestIndex = 0
         var bestDistance = Double.greatestFiniteMagnitude
-
-        let targetMidX = targetNormX * screenFrame.width
-        let targetMidY = targetNormY * screenFrame.height
 
         for (i, entry) in entries.enumerated() {
             let parts = entry.components(separatedBy: ",")

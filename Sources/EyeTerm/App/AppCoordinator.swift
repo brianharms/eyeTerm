@@ -26,6 +26,8 @@ final class AppCoordinator {
     private var waveformWindow: NSPanel?
     private var deviceChangeListenerRegistered = false
     private var deviceChangeListenerBlock: AudioObjectPropertyListenerBlock?
+    private var partialDebounceWork: DispatchWorkItem?
+    private var partialTerminalTask: Task<Void, Never>?
 
     let mediaPipeSetupManager = MediaPipeSetupManager()
     private var mediaPipeSetupWindow: NSPanel?
@@ -43,8 +45,8 @@ final class AppCoordinator {
         self.activeBackend = appState.trackingBackend == .mediaPipe
             ? MediaPipeBackend() as EyeTrackingBackend
             : EyeTermTracker() as EyeTrackingBackend
-        self.activeVoiceBackend = appState.voiceBackend == .whisperCpp
-            ? WhisperCppBackend() as VoiceTranscriptionBackend
+        self.activeVoiceBackend = appState.voiceBackend == .sfSpeech
+            ? SFSpeechRecognizerBackend() as VoiceTranscriptionBackend
             : WhisperKitBackend() as VoiceTranscriptionBackend
         self.dwellTimer = DwellTimer(
             dwellThreshold: appState.dwellTimeThreshold,
@@ -93,6 +95,11 @@ final class AppCoordinator {
 
         dwellTimer.onDwellConfirmed = { [weak self] slot in
             guard let self else { return }
+            if let previousSlot = self.appState.focusedSlot {
+                self.appState.slotPartialTranscriptions[previousSlot] = nil
+            }
+            self.partialTerminalTask?.cancel()
+            self.partialTerminalTask = nil
             self.activeVoiceBackend.flushAudio()
             self.transcriptionDiffer.reset()
             self.appState.focusedSlot = slot
@@ -123,13 +130,48 @@ final class AppCoordinator {
 
         activeVoiceBackend.onPartialTranscription = { [weak self] text in
             guard let self else { return }
+            guard let slot = self.appState.focusedSlot else { return }
             let normalized = self.commandParser.normalizeOnly(text)
-            self.appState.partialTranscription = normalized
+            self.partialDebounceWork?.cancel()
+            let work = DispatchWorkItem { [weak self] in
+                self?.appState.slotPartialTranscriptions[slot] = normalized
+            }
+            self.partialDebounceWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: work)
+
+            // Stream partial text to terminal — count >= 2 guard only (no dropLast; differ handles corrections)
+            let words = normalized.split(separator: " ", omittingEmptySubsequences: true)
+            guard words.count >= 2 else { return }
+            let partialText = words.joined(separator: " ")
+            self.partialTerminalTask?.cancel()
+            self.partialTerminalTask = Task { [weak self] in
+                guard let self else { return }
+                guard self.terminalManager.isSetup else { return }
+                let edit = self.transcriptionDiffer.diff(newText: partialText)
+                do {
+                    switch edit {
+                    case .noChange:
+                        break
+                    case .append(let appendStr):
+                        try await self.terminalManager.typeText(appendStr, in: slot)
+                    case .replaceFromOffset(let backspaces, let newText):
+                        try await self.terminalManager.sendBackspaces(backspaces, in: slot)
+                        if !newText.isEmpty {
+                            try await self.terminalManager.typeText(newText, in: slot)
+                        }
+                    }
+                } catch {
+                    print("[AppCoordinator] Partial terminal type failed: \(error)")
+                }
+            }
         }
 
         activeVoiceBackend.onTranscription = { [weak self] text in
             guard let self else { return }
-            self.appState.partialTranscription = ""
+            self.partialDebounceWork?.cancel()
+            self.partialDebounceWork = nil
+            self.partialTerminalTask?.cancel()
+            self.partialTerminalTask = nil
             self.appState.lastTranscription = text
 
             // Window action interception — before command parsing
@@ -146,6 +188,9 @@ final class AppCoordinator {
                             }
                         }
                         try? await self.windowActionManager.execute(windowAction)
+                        if let slot = self.appState.focusedSlot {
+                            self.appState.slotPartialTranscriptions[slot] = nil
+                        }
                         if let slotIndex = self.appState.focusedSlot, self.terminalManager.isSetup {
                             try? await self.terminalManager.focusTerminal(slotIndex: slotIndex)
                         }
@@ -277,6 +322,7 @@ final class AppCoordinator {
                         }
                     case .execute:
                         print("[AppCoordinator] Sending Return")
+                        self.appState.slotPartialTranscriptions[slotIndex] = nil
                         if self.appState.showCommandFlash {
                             self.appState.lastCommandFlash = "EXECUTE ↵"
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
@@ -291,6 +337,7 @@ final class AppCoordinator {
                 }
             }
             self.transcriptionDiffer.reset()
+            self.appState.slotPartialTranscriptions[slotIndex] = nil
         }
     }
 
@@ -300,8 +347,11 @@ final class AppCoordinator {
             let action = self.appState.leftWinkAction
             self.appState.lastWinkEvent = WinkEvent(side: .left, action: action, timestamp: Date())
             print("[AppCoordinator] Left wink → \(action.shortLabel)")
+            if let slot = self.appState.focusedSlot {
+                self.appState.slotPartialTranscriptions[slot] = nil
+            }
             if self.appState.showWinkOverlay {
-                self.appState.lastWinkDisplay = "← ESC"
+                self.appState.lastWinkDisplay = "(left wink) \(action.shortLabel)"
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
                     self?.appState.lastWinkDisplay = nil
                 }
@@ -313,8 +363,11 @@ final class AppCoordinator {
             let action = self.appState.rightWinkAction
             self.appState.lastWinkEvent = WinkEvent(side: .right, action: action, timestamp: Date())
             print("[AppCoordinator] Right wink → \(action.shortLabel)")
+            if let slot = self.appState.focusedSlot {
+                self.appState.slotPartialTranscriptions[slot] = nil
+            }
             if self.appState.showWinkOverlay {
-                self.appState.lastWinkDisplay = "→ ENTER"
+                self.appState.lastWinkDisplay = "(right wink) \(action.shortLabel)"
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
                     self?.appState.lastWinkDisplay = nil
                 }
@@ -381,6 +434,7 @@ final class AppCoordinator {
             _ = appState.maxWinkDuration
             _ = appState.bilateralRejectWindow
             _ = appState.winkCooldown
+            _ = appState.winkDipThreshold
             _ = appState.windowActionsEnabled
             _ = appState.terminalSetupMode
             _ = appState.selectedCameraDeviceID
@@ -425,6 +479,7 @@ final class AppCoordinator {
         terminalManager.launchCommand = appState.terminalLaunchCommand
         blinkDetector.closedThreshold = appState.winkClosedThreshold
         blinkDetector.openThreshold = appState.winkOpenThreshold
+        blinkDetector.winkDipThreshold = appState.winkDipThreshold
         blinkDetector.minWinkDuration = appState.minWinkDuration
         blinkDetector.maxWinkDuration = appState.maxWinkDuration
         blinkDetector.bilateralRejectWindow = appState.bilateralRejectWindow
@@ -489,7 +544,7 @@ final class AppCoordinator {
         do {
             switch appState.terminalSetupMode {
             case .launchNew:
-                try await terminalManager.setupTerminals(cols: appState.terminalGridColumns, rows: appState.terminalGridRows, appState: appState)
+                try await terminalManager.setupTerminals(cols: appState.terminalGridColumns, rows: appState.terminalGridRows, appState: appState, screen: selectedScreen())
             case .adoptExisting:
                 try await terminalManager.adoptTerminals(appState: appState)
             }
@@ -670,8 +725,8 @@ final class AppCoordinator {
         transcriptionDiffer.reset()
 
         appState.voiceBackend = backend
-        activeVoiceBackend = backend == .whisperCpp
-            ? WhisperCppBackend() as VoiceTranscriptionBackend
+        activeVoiceBackend = backend == .sfSpeech
+            ? SFSpeechRecognizerBackend() as VoiceTranscriptionBackend
             : WhisperKitBackend() as VoiceTranscriptionBackend
         wireCallbacks()
         pushAllSettings()
