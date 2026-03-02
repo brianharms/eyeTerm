@@ -46,6 +46,7 @@
 		C6E168E849B551396511F6C3 /* StreamingTranscriptionDiffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F4F4D8AEC89DDDF0B0772DE /* StreamingTranscriptionDiffer.swift */; };
 		CE3ED8147CA8DEA41745A75E /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BBE99F9725303AD3EC8AB2A /* MenuBarView.swift */; };
 		CE53C8E9B52C4D729A52A315 /* WhisperKitBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD3A01A725DCC7A316BC28D4 /* WhisperKitBackend.swift */; };
+		D217827202A4C56C2FAD978C /* AppVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CF2876EE27888223D3ABE65 /* AppVersion.swift */; };
 		D4016E893CB6B64D9E7CE9B0 /* EyeOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96D586726F5F1F38E47FC288 /* EyeOverlayView.swift */; };
 		D9AA8D9A19AF8CAC86031F80 /* BlinkGestureDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 371B7436B6CD4BA712BE89D2 /* BlinkGestureDetector.swift */; };
 		DC9159E94663C33CB6413AA7 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7660980D3A8CB84F2FA144DA /* SettingsView.swift */; };
@@ -87,6 +88,7 @@
 		9192A53A8CB2476BED4B46FE /* CalibrationOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalibrationOverlayView.swift; sourceTree = "<group>"; };
 		92BBD65947878E27393008A2 /* WindowLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowLayout.swift; sourceTree = "<group>"; };
 		96D586726F5F1F38E47FC288 /* EyeOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EyeOverlayView.swift; sourceTree = "<group>"; };
+		9CF2876EE27888223D3ABE65 /* AppVersion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppVersion.swift; sourceTree = "<group>"; };
 		9F17B4A714094626A952C193 /* TerminalManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalManager.swift; sourceTree = "<group>"; };
 		A05FD792E7E2FE9ABDCF9EB8 /* OverlayMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayMode.swift; sourceTree = "<group>"; };
 		A4877E19FED1F5693E7DA064 /* saved-defaults.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "saved-defaults.json"; sourceTree = "<group>"; };
@@ -133,6 +135,7 @@
 			children = (
 				387B6DDEA397FF964D2B3CEE /* AppCoordinator.swift */,
 				8F479EBA123EAD1D8AF8C083 /* AppState.swift */,
+				9CF2876EE27888223D3ABE65 /* AppVersion.swift */,
 				915C9661B7BE6D6F164A0040 /* EyeTermApp.swift */,
 				C2AFF30A1E2AD4B9D4E783E7 /* OnboardingState.swift */,
 			);
@@ -377,6 +380,7 @@
 			files = (
 				99C3F6ED34279E30E736CD46 /* AppCoordinator.swift in Sources */,
 				208E503D5731C037797E241A /* AppState.swift in Sources */,
+				D217827202A4C56C2FAD978C /* AppVersion.swift in Sources */,
 				53A68692C07345061460CEB0 /* AppleScriptBridge.swift in Sources */,
 				21DB4BE7C28F9521BDB1E7DE /* AudioBufferManager.swift in Sources */,
 				A55AB41834993D832BA303B3 /* AudioWaveformView.swift in Sources */,

@@ -53,8 +53,12 @@ final class SFSpeechRecognizerBackend: VoiceTranscriptionBackend {
         }
 
         let rec = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
-        print("[SFSpeechRecognizerBackend] Recognizer: \(rec == nil ? "nil (locale unsupported?)" : "ok"), supportsOnDevice: \(rec?.supportsOnDeviceRecognition ?? false)")
+        print("[SFSpeechRecognizerBackend] Recognizer: \(rec == nil ? "nil (locale unsupported?)" : "ok"), supportsOnDevice: \(rec?.supportsOnDeviceRecognition ?? false), available: \(rec?.isAvailable ?? false)")
         guard let rec else {
+            throw VoiceEngineError.speechRecognitionDenied
+        }
+        guard rec.isAvailable else {
+            print("[SFSpeechRecognizerBackend] Recognizer not available — model not ready or network unavailable")
             throw VoiceEngineError.speechRecognitionDenied
         }
         recognizer = rec
@@ -62,9 +66,14 @@ final class SFSpeechRecognizerBackend: VoiceTranscriptionBackend {
 
         let engine = AVAudioEngine()
 
-        // Apply non-default input device if requested
-        if let uid = inputDeviceUID, !uid.isEmpty,
-           let deviceID = Self.audioDeviceID(forUID: uid) {
+        // Resolve the device UID to use — prefer explicit selection, then
+        // fall back to the built-in mic (ignoring the system default which
+        // may be AirPods/external device), then let AVAudioEngine decide.
+        let resolvedUID: String? = {
+            if let uid = inputDeviceUID, !uid.isEmpty { return uid }
+            return Self.builtInInputDeviceUID()
+        }()
+        if let uid = resolvedUID, let deviceID = Self.audioDeviceID(forUID: uid) {
             var devID = deviceID
             AudioUnitSetProperty(
                 engine.inputNode.audioUnit!,
@@ -74,12 +83,19 @@ final class SFSpeechRecognizerBackend: VoiceTranscriptionBackend {
                 &devID,
                 UInt32(MemoryLayout<AudioDeviceID>.size)
             )
+            print("[SFSpeechRecognizerBackend] Using input device UID: \(uid)")
         }
 
         let inputNode = engine.inputNode
-        let recordingFormat = inputNode.outputFormat(forBus: 0)
-
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
+        // Use the hardware's native sample rate but force float32 so that
+        // floatChannelData is always non-nil in the tap callback.
+        // inputFormat(forBus:) reflects hardware and is available before start().
+        let hwRate = inputNode.inputFormat(forBus: 0).sampleRate
+        let tapRate = hwRate > 0 ? hwRate : 44100.0
+        let tapFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32,
+                                      sampleRate: tapRate, channels: 1,
+                                      interleaved: false)!
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: tapFormat) { [weak self] buffer, _ in
             guard let self, !self.isStopping else { return }
             self.recognitionRequest?.append(buffer)
 
@@ -95,8 +111,8 @@ final class SFSpeechRecognizerBackend: VoiceTranscriptionBackend {
             }
         }
 
-        // Bug fix: start engine BEFORE starting recognition session so audio
-        // is already flowing when the first request is created.
+        // Start engine after tap is installed — starting before any tap is
+        // configured can throw an ObjC exception (not catchable via Swift try).
         try engine.start()
         audioEngine = engine
         isRunning = true
@@ -190,9 +206,8 @@ final class SFSpeechRecognizerBackend: VoiceTranscriptionBackend {
 
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
-        if recognizer.supportsOnDeviceRecognition {
-            request.requiresOnDeviceRecognition = true
-        }
+        // Don't force on-device — if the model isn't fully loaded the session
+        // fails silently with no results. Let the OS pick server vs on-device.
         recognitionRequest = request
 
         print("[SFSpeechRecognizerBackend] Starting recognition task (session \(sessionID))")
@@ -248,6 +263,55 @@ final class SFSpeechRecognizerBackend: VoiceTranscriptionBackend {
         guard !samples.isEmpty else { return 0 }
         let sumOfSquares = samples.reduce(Float(0)) { $0 + $1 * $1 }
         return sqrt(sumOfSquares / Float(samples.count))
+    }
+
+    /// Returns the UID of the first built-in (internal) input device, or nil if none found.
+    private static func builtInInputDeviceUID() -> String? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size) == noErr else { return nil }
+        let count = Int(size) / MemoryLayout<AudioDeviceID>.size
+        var devices = [AudioDeviceID](repeating: 0, count: count)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &devices) == noErr else { return nil }
+
+        for deviceID in devices {
+            // Check it has input streams
+            var streamAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyStreamConfiguration,
+                mScope: kAudioDevicePropertyScopeInput,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var streamSize: UInt32 = 0
+            guard AudioObjectGetPropertyDataSize(deviceID, &streamAddress, 0, nil, &streamSize) == noErr, streamSize > 0 else { continue }
+
+            // Check transport type = built-in
+            var transportAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyTransportType,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var transport: UInt32 = 0
+            var transportSize = UInt32(MemoryLayout<UInt32>.size)
+            guard AudioObjectGetPropertyData(deviceID, &transportAddress, 0, nil, &transportSize, &transport) == noErr,
+                  transport == kAudioDeviceTransportTypeBuiltIn else { continue }
+
+            // Get UID
+            var uidAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyDeviceUID,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var uidRef: CFString? = nil
+            var uidSize = UInt32(MemoryLayout<CFString?>.size)
+            guard AudioObjectGetPropertyData(deviceID, &uidAddress, 0, nil, &uidSize, &uidRef) == noErr,
+                  let uid = uidRef as String? else { continue }
+            return uid
+        }
+        return nil
     }
 
     private static func audioDeviceID(forUID uid: String) -> AudioDeviceID? {

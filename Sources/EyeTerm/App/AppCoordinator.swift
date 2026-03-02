@@ -96,7 +96,7 @@ final class AppCoordinator {
         dwellTimer.onDwellConfirmed = { [weak self] slot in
             guard let self else { return }
             if let previousSlot = self.appState.focusedSlot {
-                self.appState.slotPartialTranscriptions[previousSlot] = nil
+                self.appState.setPartial(nil, forSlot: previousSlot)
             }
             self.partialTerminalTask?.cancel()
             self.partialTerminalTask = nil
@@ -130,16 +130,21 @@ final class AppCoordinator {
 
         activeVoiceBackend.onPartialTranscription = { [weak self] text in
             guard let self else { return }
-            guard let slot = self.appState.focusedSlot else { return }
             let normalized = self.commandParser.normalizeOnly(text)
             self.partialDebounceWork?.cancel()
+
+            // Always update diagnostics slot so Settings panel shows partial text
+            // regardless of whether a terminal is focused.
+            let diagSlot = self.appState.focusedSlot ?? -1
             let work = DispatchWorkItem { [weak self] in
-                self?.appState.slotPartialTranscriptions[slot] = normalized
+                guard let self else { return }
+                self.appState.setPartial(normalized, forSlot: diagSlot)
             }
             self.partialDebounceWork = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: work)
 
-            // Stream partial text to terminal — count >= 2 guard only (no dropLast; differ handles corrections)
+            // Stream partial text to terminal only when a slot is focused
+            guard let slot = self.appState.focusedSlot else { return }
             let words = normalized.split(separator: " ", omittingEmptySubsequences: true)
             guard words.count >= 2 else { return }
             let partialText = words.joined(separator: " ")
@@ -189,7 +194,7 @@ final class AppCoordinator {
                         }
                         try? await self.windowActionManager.execute(windowAction)
                         if let slot = self.appState.focusedSlot {
-                            self.appState.slotPartialTranscriptions[slot] = nil
+                            self.appState.setPartial(nil, forSlot: slot)
                         }
                         if let slotIndex = self.appState.focusedSlot, self.terminalManager.isSetup {
                             try? await self.terminalManager.focusTerminal(slotIndex: slotIndex)
@@ -322,7 +327,7 @@ final class AppCoordinator {
                         }
                     case .execute:
                         print("[AppCoordinator] Sending Return")
-                        self.appState.slotPartialTranscriptions[slotIndex] = nil
+                        self.appState.setPartial(nil, forSlot: slotIndex)
                         if self.appState.showCommandFlash {
                             self.appState.lastCommandFlash = "EXECUTE ↵"
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
@@ -337,7 +342,7 @@ final class AppCoordinator {
                 }
             }
             self.transcriptionDiffer.reset()
-            self.appState.slotPartialTranscriptions[slotIndex] = nil
+            self.appState.setPartial(nil, forSlot: slotIndex)
         }
     }
 
@@ -348,7 +353,7 @@ final class AppCoordinator {
             self.appState.lastWinkEvent = WinkEvent(side: .left, action: action, timestamp: Date())
             print("[AppCoordinator] Left wink → \(action.shortLabel)")
             if let slot = self.appState.focusedSlot {
-                self.appState.slotPartialTranscriptions[slot] = nil
+                self.appState.setPartial(nil, forSlot: slot)
             }
             if self.appState.showWinkOverlay {
                 self.appState.lastWinkDisplay = "(left wink) \(action.shortLabel)"
@@ -364,7 +369,7 @@ final class AppCoordinator {
             self.appState.lastWinkEvent = WinkEvent(side: .right, action: action, timestamp: Date())
             print("[AppCoordinator] Right wink → \(action.shortLabel)")
             if let slot = self.appState.focusedSlot {
-                self.appState.slotPartialTranscriptions[slot] = nil
+                self.appState.setPartial(nil, forSlot: slot)
             }
             if self.appState.showWinkOverlay {
                 self.appState.lastWinkDisplay = "(right wink) \(action.shortLabel)"
@@ -515,13 +520,15 @@ final class AppCoordinator {
             appState.addError("Accessibility permission needed for terminal control.")
         }
 
-        await setupTerminals()
+        if !appState.isTerminalSetup {
+            await setupTerminals()
+        }
 
-        if permissions.camera {
+        if permissions.camera && !appState.isEyeTrackingActive {
             startEyeTracking()
         }
 
-        if permissions.microphone {
+        if permissions.microphone && !appState.isVoiceActive {
             await startVoice()
         }
 
@@ -603,6 +610,19 @@ final class AppCoordinator {
                 appState.isVoiceActive = true
                 showWaveformPanel()
                 updateStatus()
+            }
+        } catch VoiceEngineError.speechRecognitionDenied {
+            await MainActor.run {
+                appState.addError("Speech Recognition permission denied.")
+                updateStatus()
+                let alert = NSAlert()
+                alert.messageText = "Speech Recognition Permission Required"
+                alert.informativeText = "eyeTerm needs Speech Recognition access to transcribe voice commands.\n\nOpen System Settings → Privacy & Security → Speech Recognition and enable eyeTerm."
+                alert.addButton(withTitle: "Open Speech Recognition Settings")
+                alert.addButton(withTitle: "Cancel")
+                if alert.runModal() == .alertFirstButtonReturn {
+                    Permissions.openSpeechRecognitionSettings()
+                }
             }
         } catch {
             await MainActor.run {
@@ -749,6 +769,20 @@ final class AppCoordinator {
     // MARK: - Window Level
 
     private func setupWindowLevelObservers() {
+        // Catch Settings window the moment it orders onto screen (NSWindowWillOrderOnScreen fires before display)
+        NotificationCenter.default.addObserver(
+            forName: Notification.Name("NSWindowWillOrderOnScreenNotification"),
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self,
+                  let window = notification.object as? NSWindow,
+                  NSApp.windows.contains(window),
+                  window !== self.eyeTermOverlayWindow,
+                  !(window is NSPanel) else { return }
+            window.level = .screenSaver
+        }
+
         NotificationCenter.default.addObserver(
             forName: NSWindow.didBecomeKeyNotification,
             object: nil,
@@ -758,7 +792,11 @@ final class AppCoordinator {
                   let window = notification.object as? NSWindow,
                   NSApp.windows.contains(window),
                   window !== self.eyeTermOverlayWindow else { return }
-            window.level = .floating
+            if !(window is NSPanel) {
+                window.level = .screenSaver
+            } else {
+                window.level = .floating
+            }
         }
 
         NotificationCenter.default.addObserver(
@@ -770,15 +808,14 @@ final class AppCoordinator {
                   let window = notification.object as? NSWindow,
                   NSApp.windows.contains(window),
                   window !== self.eyeTermOverlayWindow else { return }
-            // Keep the Settings window (the only NSWindow; all others are NSPanel) always floating
+            // Settings window (only non-panel) stays on top while open
             if !(window is NSPanel) {
-                window.level = .floating
+                window.level = .screenSaver
                 return
             }
             window.level = .normal
         }
 
-        // Elevate the Settings window the moment it appears on screen
         NotificationCenter.default.addObserver(
             forName: NSWindow.didBecomeMainNotification,
             object: nil,
@@ -789,7 +826,7 @@ final class AppCoordinator {
                   NSApp.windows.contains(window),
                   window !== self.eyeTermOverlayWindow,
                   !(window is NSPanel) else { return }
-            window.level = .floating
+            window.level = .screenSaver
         }
     }
 

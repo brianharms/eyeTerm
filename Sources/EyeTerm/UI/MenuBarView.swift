@@ -15,9 +15,14 @@ struct MenuBarView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // ── App Identity + Status ──
-            Text("eyeTerm")
-                .font(.caption)
-                .fontWeight(.bold)
+            HStack(spacing: 4) {
+                Text("eyeTerm")
+                    .font(.caption)
+                    .fontWeight(.bold)
+                Text("v\(AppVersion.current)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
 
             HStack(spacing: 6) {
                 Circle()

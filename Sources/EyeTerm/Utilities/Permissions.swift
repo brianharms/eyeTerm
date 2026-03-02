@@ -1,5 +1,6 @@
 import AVFoundation
 import AppKit
+import Speech
 
 enum PermissionStatus: String {
     case granted
@@ -52,6 +53,29 @@ struct Permissions {
 
     static func openMicrophoneSettings() {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    static func checkSpeechRecognition() -> PermissionStatus {
+        switch SFSpeechRecognizer.authorizationStatus() {
+        case .authorized: return .granted
+        case .denied, .restricted: return .denied
+        case .notDetermined: return .notDetermined
+        @unknown default: return .notDetermined
+        }
+    }
+
+    static func requestSpeechRecognition() async -> Bool {
+        await withCheckedContinuation { cont in
+            SFSpeechRecognizer.requestAuthorization { status in
+                cont.resume(returning: status == .authorized)
+            }
+        }
+    }
+
+    static func openSpeechRecognitionSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_SpeechRecognition") {
             NSWorkspace.shared.open(url)
         }
     }

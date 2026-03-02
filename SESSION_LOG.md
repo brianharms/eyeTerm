@@ -570,6 +570,53 @@ Three bug fixes: (1) add "Stop All" button to menu bar dropdown, (2) fix gibberi
 
 ---
 
+## Session — 2026-03-01 21:10
+
+### Goal
+Fix SFSpeechRecognizer voice backend (user rejected WhisperKit), fix crash on voice enable, fix waveform/transcription not showing, fix debug overlay quadrant highlighting, add version tracking, make quadrant highlights work without terminals launched.
+
+### Accomplished
+- **SFSpeechRecognizer backend fully repaired**: installTap before engine.start() (prevents ObjC exception crash), explicit float32 tap format (fixes nil floatChannelData / no waveform), removed requiresOnDeviceRecognition (was silently failing)
+- **Built-in mic default**: CoreAudio scan for kAudioDeviceTransportTypeBuiltIn — always prefers internal MIC over AirPods/system default
+- **@Observable dict mutation fix**: slotPartialTranscriptions direct subscript mutation never fired property setter → added `setPartial(_:forSlot:)` using full dict reassignment; AppCoordinator updated to use it
+- **dropLast() removed**: Was WhisperKit-specific workaround cutting off last word; removed for SFSpeechRecognizer
+- **Debug overlay quadrant fix**: ForEach was inside showQuadrantHighlighting guard — moved outside so slots always render in debug mode
+- **AppVersion.swift added**: Enum with `static let current`, shown in menu bar dropdown. v0.01→0.05 across sessions
+- **Fallback quadrant slots**: Both DebugOverlayContent and SubtleOverlayContent now compute `displaySlots` — if terminalSlots is empty, renders 4 equal placeholder quadrants so highlighting works before any terminals are adopted
+- **Voice confirmed working** by user in quiet environment
+- Built and installed v0.05
+
+### In Progress / Incomplete
+- Nothing — all session goals completed
+
+### Key Decisions
+- Version must increment on every build (saved to MEMORY.md)
+- SFSpeechRecognizer is the preferred backend — WhisperKit was rejected by user
+- Fallback slots are computed only in the view layer, not stored in AppState — keeps state clean
+
+### Files Changed
+- `Sources/EyeTerm/Voice/SFSpeechRecognizerBackend.swift` — full rewrite: float32 tap, built-in mic detection, session ID flush logic, silence VAD
+- `Sources/EyeTerm/App/AppVersion.swift` — NEW file, `enum AppVersion { static let current = "0.05" }`
+- `Sources/EyeTerm/App/AppState.swift` — added `setPartial(_:forSlot:)` helper
+- `Sources/EyeTerm/App/AppCoordinator.swift` — all 6 slotPartialTranscriptions mutations → setPartial(), onPartialTranscription stores under diagSlot
+- `Sources/EyeTerm/UI/EyeOverlayView.swift` — fallback displaySlots in Debug + Subtle overlays, dropLast() removed, ForEach moved outside showQuadrantHighlighting guard
+- `Sources/EyeTerm/UI/MenuBarView.swift` — version display in dropdown
+- `eyeTerm.xcodeproj/project.pbxproj` — regenerated via xcodegen to include AppVersion.swift
+
+### Known Issues
+- Voice works best in quiet environments (expected — SFSpeechRecognizer limitation)
+
+### Running Services
+- eyeTerm.app v0.05 running from `/tmp/eyeterm-sim-build/Build/Products/Debug/eyeTerm.app`
+
+### Next Steps
+- Test dictation: verify partial transcriptions appear in Settings diagnostics and overlay bubbles
+- Test quadrant highlighting without any terminals adopted (should now show 4 placeholder rects)
+- Consider: dictation display fade animation (pops in/out currently)
+- Consider: per-quadrant terminal label in subtle overlay
+
+---
+
 ## TODO — Future Features
 
 ### L2CS-Net CoreML Backend (Third Tracking Backend)

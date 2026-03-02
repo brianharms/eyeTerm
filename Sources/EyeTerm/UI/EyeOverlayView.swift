@@ -27,6 +27,15 @@ private struct SubtleOverlayContent: View {
     let size: CGSize
     @Environment(AppState.self) private var appState
 
+    private var displaySlots: [TerminalSlot] {
+        guard appState.terminalSlots.isEmpty else { return appState.terminalSlots }
+        return (0..<4).map { i in
+            TerminalSlot(id: i,
+                         normalizedRect: CGRect(x: CGFloat(i % 2) * 0.5, y: CGFloat(i / 2) * 0.5, width: 0.5, height: 0.5),
+                         label: "Slot \(i + 1)")
+        }
+    }
+
     var body: some View {
         let smoothX = appState.smoothedEyePoint.x * size.width
         let smoothY = appState.smoothedEyePoint.y * size.height
@@ -36,10 +45,19 @@ private struct SubtleOverlayContent: View {
             .frame(width: appState.subtleEyeSize, height: appState.subtleEyeSize)
             .position(x: smoothX, y: smoothY)
 
-        ForEach(appState.terminalSlots) { slot in
+        ForEach(displaySlots) { slot in
             let isFocused = slot.id == appState.focusedSlot
             let isDwelling = slot.id == appState.dwellingSlot
             let progress = isDwelling ? appState.dwellProgress : 0
+
+            // Always-on faint slot outline
+            if appState.showQuadrantHighlighting {
+                let rect = slotRect(slot, size: size)
+                Rectangle()
+                    .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+                    .frame(width: rect.width, height: rect.height)
+                    .position(x: rect.midX, y: rect.midY)
+            }
 
             // Dwell progress border
             if isDwelling && !isFocused && progress > 0 && appState.showActiveState {
@@ -78,6 +96,16 @@ private struct DebugOverlayContent: View {
     let size: CGSize
     @Environment(AppState.self) private var appState
 
+    // Returns real slots, or 4 equal-quadrant placeholders when none are configured yet
+    private var displaySlots: [TerminalSlot] {
+        guard appState.terminalSlots.isEmpty else { return appState.terminalSlots }
+        return (0..<4).map { i in
+            TerminalSlot(id: i,
+                         normalizedRect: CGRect(x: CGFloat(i % 2) * 0.5, y: CGFloat(i / 2) * 0.5, width: 0.5, height: 0.5),
+                         label: "Slot \(i + 1)")
+        }
+    }
+
     var body: some View {
         let midX = size.width / 2
         let midY = size.height / 2
@@ -95,14 +123,19 @@ private struct DebugOverlayContent: View {
         let smoothX = appState.smoothedEyePoint.x * size.width
         let smoothY = appState.smoothedEyePoint.y * size.height
 
-        // Slot fills
-        if appState.showQuadrantHighlighting {
-            ForEach(appState.terminalSlots) { slot in
-                let rect = slotRect(slot, size: size)
-                let isActive = slot.id == appState.activeSlot
-                let isFocused = slot.id == appState.focusedSlot
-                let isDwelling = slot.id == appState.dwellingSlot
-                let progress = isDwelling ? appState.dwellProgress : 0
+        // Slot fills — always rendered in debug mode regardless of showQuadrantHighlighting
+        ForEach(displaySlots) { slot in
+            let rect = slotRect(slot, size: size)
+            let isActive = slot.id == appState.activeSlot
+            let isFocused = slot.id == appState.focusedSlot
+            let isDwelling = slot.id == appState.dwellingSlot
+            let progress = isDwelling ? appState.dwellProgress : 0
+
+            // Always-on faint outline so all quadrants are visible
+            Rectangle()
+                .strokeBorder(.white.opacity(0.18), lineWidth: 1)
+                .frame(width: rect.width, height: rect.height)
+                .position(x: rect.midX, y: rect.midY)
 
                 if isFocused {
                     Rectangle()
@@ -148,7 +181,6 @@ private struct DebugOverlayContent: View {
                     }
                 }
             }
-        }
 
         // Quadrant grid lines (dashed)
         Path { path in
@@ -342,9 +374,8 @@ private struct SharedOverlayContent: View {
         if appState.showDictationDisplay {
             ForEach(appState.terminalSlots) { slot in
                 if let partial = appState.slotPartialTranscriptions[slot.id],
-                   partial.split(separator: " ").count >= 2 {
-                    let words = partial.split(separator: " ")
-                    let displayText = words.dropLast().joined(separator: " ")
+                   !partial.isEmpty {
+                    let displayText = partial
                     let rect = slotRect(slot, size: size)
                     Text(displayText)
                         .font(.system(size: 28, weight: .bold))

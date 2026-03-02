@@ -34,6 +34,16 @@ LEFT_EYE_BOTTOM = 374
 RIGHT_EYE_CONTOUR = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246]
 LEFT_EYE_CONTOUR = [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398]
 
+# Face mesh contour groups for overlay visualization
+FACE_OVAL_INDICES = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288,
+                     397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136,
+                     172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109]
+LEFT_EYEBROW_INDICES  = [276, 283, 282, 295, 285, 336, 296, 334, 293, 300]
+RIGHT_EYEBROW_INDICES = [46,  53,  52,  65,  55,  107, 66,  105, 63,  70]
+NOSE_BRIDGE_INDICES   = [168, 6, 197, 195, 5, 4, 1]
+LIPS_OUTER_INDICES    = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291,
+                         375, 321, 405, 314, 17, 84, 181, 91, 146, 61]
+
 # 3D model points for head pose estimation (generic face model)
 MODEL_POINTS = np.array([
     (0, 0, 0),            # Nose tip
@@ -179,6 +189,13 @@ def main():
             left_pupil = [round(lm[LEFT_IRIS_CENTER].x, 4), round(lm[LEFT_IRIS_CENTER].y, 4)]
             right_pupil = [round(lm[RIGHT_IRIS_CENTER].x, 4), round(lm[RIGHT_IRIS_CENTER].y, 4)]
 
+            # Face mesh contour groups for camera preview visualization
+            face_oval      = [[round(lm[i].x, 4), round(lm[i].y, 4)] for i in FACE_OVAL_INDICES]
+            left_eyebrow   = [[round(lm[i].x, 4), round(lm[i].y, 4)] for i in LEFT_EYEBROW_INDICES]
+            right_eyebrow  = [[round(lm[i].x, 4), round(lm[i].y, 4)] for i in RIGHT_EYEBROW_INDICES]
+            nose_bridge    = [[round(lm[i].x, 4), round(lm[i].y, 4)] for i in NOSE_BRIDGE_INDICES]
+            lips_outer     = [[round(lm[i].x, 4), round(lm[i].y, 4)] for i in LIPS_OUTER_INDICES]
+
             emit({
                 "face_detected": True,
                 "gaze_x": round(gaze_x, 4),
@@ -194,6 +211,11 @@ def main():
                 "right_eye_points": right_eye_pts,
                 "iris_ratio_x": round(avg_ix, 4),
                 "iris_ratio_y": round(avg_iy, 4),
+                "face_oval": face_oval,
+                "left_eyebrow": left_eyebrow,
+                "right_eyebrow": right_eyebrow,
+                "nose_bridge": nose_bridge,
+                "lips_outer": lips_outer,
             })
 
     except KeyboardInterrupt:

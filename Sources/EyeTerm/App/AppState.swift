@@ -104,6 +104,18 @@ final class AppState {
     var slotPartialTranscriptions: [Int: String] = [:]
     var transcriptionHistory: [(text: String, cleaned: String, timestamp: Date)] = []
 
+    /// Set or clear a partial transcription for a slot. Uses full reassignment
+    /// so @Observable property setter fires and SwiftUI re-renders.
+    func setPartial(_ text: String?, forSlot slot: Int) {
+        var updated = slotPartialTranscriptions
+        if let text, !text.isEmpty {
+            updated[slot] = text
+        } else {
+            updated.removeValue(forKey: slot)
+        }
+        slotPartialTranscriptions = updated
+    }
+
     // MARK: - Eye Tracking Points (for overlay)
     var rawEyePoint: CGPoint = .zero
     var calibratedEyePoint: CGPoint = .zero
@@ -122,6 +134,8 @@ final class AppState {
     // MARK: - Camera Preview
     var isCameraPreviewVisible = false
     var faceObservationData: FaceObservationData?
+    var showCameraEyeVisualization: Bool = true
+    var showCameraDebugOverlay: Bool = false
 
     // MARK: - Status
     var statusMessage = "Idle"

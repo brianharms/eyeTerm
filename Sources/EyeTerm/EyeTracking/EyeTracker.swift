@@ -12,6 +12,31 @@ struct FaceObservationData {
     let pitch: Double?
     let leftEyeAperture: Double?
     let rightEyeAperture: Double?
+    /// Ordered groups of face mesh contour polylines (face oval, eyebrows, nose, lips).
+    /// Empty for the Apple Vision backend; populated by MediaPipe.
+    let faceMeshContours: [[CGPoint]]
+
+    init(boundingBox: CGRect,
+         leftEyePoints: [CGPoint],
+         rightEyePoints: [CGPoint],
+         leftPupilCenter: CGPoint?,
+         rightPupilCenter: CGPoint?,
+         yaw: Double?,
+         pitch: Double?,
+         leftEyeAperture: Double?,
+         rightEyeAperture: Double?,
+         faceMeshContours: [[CGPoint]] = []) {
+        self.boundingBox = boundingBox
+        self.leftEyePoints = leftEyePoints
+        self.rightEyePoints = rightEyePoints
+        self.leftPupilCenter = leftPupilCenter
+        self.rightPupilCenter = rightPupilCenter
+        self.yaw = yaw
+        self.pitch = pitch
+        self.leftEyeAperture = leftEyeAperture
+        self.rightEyeAperture = rightEyeAperture
+        self.faceMeshContours = faceMeshContours
+    }
 
     /// Compute Eye Aperture Ratio from contour points: vertical extent / horizontal extent.
     static func eyeApertureRatio(_ points: [CGPoint]) -> Double? {
