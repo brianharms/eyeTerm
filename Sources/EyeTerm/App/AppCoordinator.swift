@@ -3,6 +3,7 @@ import AppKit
 import SwiftUI
 import Observation
 import CoreAudio
+import AVFoundation
 
 @Observable
 final class AppCoordinator {
@@ -28,9 +29,12 @@ final class AppCoordinator {
     private var deviceChangeListenerBlock: AudioObjectPropertyListenerBlock?
     private var partialDebounceWork: DispatchWorkItem?
     private var partialTerminalTask: Task<Void, Never>?
+    private var partialClearTask: Task<Void, Never>?
+    private var windowObserver: NSKeyValueObservation?
 
     let mediaPipeSetupManager = MediaPipeSetupManager()
     private var mediaPipeSetupWindow: NSPanel?
+    private var permissionsWindow: NSPanel?
 
     // Debug visualization smoothers (separate from pipeline smoothing)
     private var debugHeadFilter = EyeTermEMAFilter(alpha: 0.15)
@@ -54,11 +58,11 @@ final class AppCoordinator {
         )
         wireCallbacks()
         wireBlinkDetector()
+        appState.refreshAvailableCameras()
+        appState.refreshAvailableDisplays()
         pushAllSettings()
         observeSettings()
         refreshMicList()
-        appState.refreshAvailableCameras()
-        appState.refreshAvailableDisplays()
         registerDeviceChangeListener()
         registerScreenChangeListener()
         setupWindowLevelObservers()
@@ -178,6 +182,14 @@ final class AppCoordinator {
             self.partialTerminalTask?.cancel()
             self.partialTerminalTask = nil
             self.appState.lastTranscription = text
+
+            // Schedule auto-dismiss of overlay bubble after 4 seconds
+            self.partialClearTask?.cancel()
+            self.partialClearTask = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                guard !Task.isCancelled else { return }
+                await MainActor.run { self?.appState.clearAllPartials() }
+            }
 
             // Window action interception — before command parsing
             if self.appState.windowActionsEnabled,
@@ -327,6 +339,8 @@ final class AppCoordinator {
                         }
                     case .execute:
                         print("[AppCoordinator] Sending Return")
+                        self.partialClearTask?.cancel()
+                        self.partialClearTask = nil
                         self.appState.setPartial(nil, forSlot: slotIndex)
                         if self.appState.showCommandFlash {
                             self.appState.lastCommandFlash = "EXECUTE ↵"
@@ -342,7 +356,6 @@ final class AppCoordinator {
                 }
             }
             self.transcriptionDiffer.reset()
-            self.appState.setPartial(nil, forSlot: slotIndex)
         }
     }
 
@@ -490,16 +503,30 @@ final class AppCoordinator {
         blinkDetector.bilateralRejectWindow = appState.bilateralRejectWindow
         blinkDetector.cooldown = appState.winkCooldown
         if !appState.blinkGesturesEnabled { blinkDetector.reset() }
-        // Push camera selection to Apple Vision backend (cast required — not in protocol)
+        // Push camera selection to whichever backend is active (not in protocol — cast required).
+        // For EyeTermTracker we resolve the actual AVCaptureDevice via DiscoverySession — same
+        // mechanism the camera picker uses — and hand the object directly to the tracker so it
+        // never has to do a uniqueID lookup that can silently return nil and fall back to the
+        // system default (which may be the Logitech or any other external camera).
+        let newCamID = appState.selectedCameraDeviceID
+        var cameraChanged = false
         if let tracker = activeBackend as? EyeTermTracker {
-            let newCamID = appState.selectedCameraDeviceID
-            if tracker.selectedCameraDeviceID != newCamID {
-                tracker.selectedCameraDeviceID = newCamID
-                if tracker.isRunning {
-                    restartEyeTracking()
-                }
+            let resolvedDevice = Self.resolveCamera(uniqueID: newCamID)
+            let currentID = tracker.selectedCaptureDevice?.uniqueID ?? ""
+            let incomingID = resolvedDevice?.uniqueID ?? newCamID
+            if currentID != incomingID {
+                tracker.selectedCaptureDevice = resolvedDevice
+                cameraChanged = true
+                if tracker.isRunning { restartEyeTracking() }
+            }
+        } else if let mp = activeBackend as? MediaPipeBackend {
+            if mp.selectedCameraDeviceID != newCamID {
+                mp.selectedCameraDeviceID = newCamID
+                cameraChanged = true
+                if mp.isRunning { restartEyeTracking() }
             }
         }
+        if cameraChanged { appState.persistSettings() }
         refreshOverlayDisplay()
         updateOverlayVisibility()
     }
@@ -507,28 +534,41 @@ final class AppCoordinator {
     // MARK: - Start / Stop All
 
     func startAll() async {
-        appState.statusMessage = "Starting..."
+        appState.statusMessage = "Checking permissions..."
 
-        let permissions = await Permissions.requestAllPermissions()
-        if !permissions.camera {
-            appState.addError("Camera permission denied — eye tracking unavailable.")
+        // Trigger OS prompts for camera/mic/speech if not yet determined.
+        // Accessibility and automation are NOT requested here — they open
+        // System Preferences or target iTerm2, which can destabilize the
+        // menu bar app. The permissions panel handles those individually.
+        if Permissions.checkCamera() == .notDetermined { _ = await Permissions.requestCamera() }
+        if Permissions.checkMicrophone() == .notDetermined { _ = await Permissions.requestMicrophone() }
+        if Permissions.checkSpeechRecognition() == .notDetermined { _ = await Permissions.requestSpeechRecognition() }
+
+        // Check all required permissions (read-only, no prompts)
+        let camGranted  = Permissions.checkCamera() == .granted
+        let micGranted  = Permissions.checkMicrophone() == .granted
+        let accGranted  = Permissions.checkAccessibility()
+        let autoGranted = Permissions.checkAutomation(bundleID: "com.googlecode.iterm2") == .granted
+
+        guard camGranted && micGranted && accGranted && autoGranted else {
+            appState.statusMessage = "Permissions required"
+            showPermissionsPanel(onAllGrantedDone: { [weak self] in
+                Task { await self?.startAll() }
+            })
+            return
         }
-        if !permissions.microphone {
-            appState.addError("Microphone permission denied — voice input unavailable.")
-        }
-        if !Permissions.checkAccessibility() {
-            appState.addError("Accessibility permission needed for terminal control.")
-        }
+
+        appState.statusMessage = "Starting..."
 
         if !appState.isTerminalSetup {
             await setupTerminals()
         }
 
-        if permissions.camera && !appState.isEyeTrackingActive {
+        if !appState.isEyeTrackingActive {
             startEyeTracking()
         }
 
-        if permissions.microphone && !appState.isVoiceActive {
+        if !appState.isVoiceActive {
             await startVoice()
         }
 
@@ -548,17 +588,30 @@ final class AppCoordinator {
     // MARK: - Terminals
 
     func setupTerminals() async {
+        // Pause eye tracking during setup so gaze focus doesn't route commands to the wrong window.
+        let wasEyeTrackingActive = appState.isEyeTrackingActive
+        if wasEyeTrackingActive {
+            stopEyeTracking()
+            appState.statusMessage = "Tracking paused — setting up terminals..."
+        }
+
         do {
             switch appState.terminalSetupMode {
             case .launchNew:
                 try await terminalManager.setupTerminals(cols: appState.terminalGridColumns, rows: appState.terminalGridRows, appState: appState, screen: selectedScreen())
             case .adoptExisting:
-                try await terminalManager.adoptTerminals(appState: appState)
+                try await terminalManager.adoptTerminals(appState: appState, screen: selectedScreen())
+            case .chooseProjects:
+                try await terminalManager.setupProjectTerminals(projectURLs: appState.selectedProjectFolders, initialPrompt: appState.claudeInitialPrompt, initialPromptStagger: appState.claudeInitialPromptStagger, renameToProjectName: appState.renameWindowsToProjectName, appState: appState, screen: selectedScreen())
             }
             appState.isTerminalSetup = true
             appState.statusMessage = "Terminals ready"
         } catch {
             appState.addError("Terminal setup failed: \(error.localizedDescription)")
+        }
+
+        if wasEyeTrackingActive {
+            startEyeTracking()
         }
         updateStatus()
     }
@@ -581,7 +634,7 @@ final class AppCoordinator {
         // Refresh camera preview if it was opened before tracking started,
         // so it picks up the now-active capture session.
         if appState.isCameraPreviewVisible {
-            dismissCameraPreview()
+            destroyCameraPreview()
             showCameraPreview()
         }
     }
@@ -592,7 +645,7 @@ final class AppCoordinator {
         appState.isEyeTrackingActive = false
         appState.activeSlot = nil
         dismissEyeTermOverlay()
-        dismissCameraPreview()
+        destroyCameraPreview()
         updateStatus()
     }
 
@@ -732,7 +785,7 @@ final class AppCoordinator {
 
         // Refresh camera preview if it's open so it uses the new backend's session.
         if appState.isCameraPreviewVisible {
-            dismissCameraPreview()
+            destroyCameraPreview()
             showCameraPreview()
         }
     }
@@ -768,19 +821,31 @@ final class AppCoordinator {
 
     // MARK: - Window Level
 
+    // Level above the overlay (.screenSaver = 1000) so Settings is always visible
+    private static let settingsWindowLevel = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 1)
+
+    func bringSettingsWindowToFront() {
+        // KVO handles windows created for the first time (see setupWindowLevelObservers).
+        // This covers re-raising an already-existing Settings window.
+        for window in NSApp.windows {
+            guard !(window is NSPanel), window !== eyeTermOverlayWindow else { continue }
+            window.level = AppCoordinator.settingsWindowLevel
+            window.makeKeyAndOrderFront(nil)
+        }
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     private func setupWindowLevelObservers() {
-        // Catch Settings window the moment it orders onto screen (NSWindowWillOrderOnScreen fires before display)
-        NotificationCenter.default.addObserver(
-            forName: Notification.Name("NSWindowWillOrderOnScreenNotification"),
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            guard let self,
-                  let window = notification.object as? NSWindow,
-                  NSApp.windows.contains(window),
-                  window !== self.eyeTermOverlayWindow,
-                  !(window is NSPanel) else { return }
-            window.level = .screenSaver
+        // KVO fires synchronously when NSApp adds a new window — before it's shown.
+        // This catches the SwiftUI Settings window at creation and sets its level immediately.
+        windowObserver = NSApp.observe(\.windows, options: [.new, .old]) { [weak self] app, change in
+            guard let self else { return }
+            let oldSet = Set(change.oldValue ?? [])
+            let newSet = Set(change.newValue ?? [])
+            for window in newSet.subtracting(oldSet) {
+                guard !(window is NSPanel), window !== self.eyeTermOverlayWindow else { continue }
+                window.level = AppCoordinator.settingsWindowLevel
+            }
         }
 
         NotificationCenter.default.addObserver(
@@ -793,7 +858,8 @@ final class AppCoordinator {
                   NSApp.windows.contains(window),
                   window !== self.eyeTermOverlayWindow else { return }
             if !(window is NSPanel) {
-                window.level = .screenSaver
+                window.level = AppCoordinator.settingsWindowLevel
+                NSApp.activate(ignoringOtherApps: true)
             } else {
                 window.level = .floating
             }
@@ -808,9 +874,9 @@ final class AppCoordinator {
                   let window = notification.object as? NSWindow,
                   NSApp.windows.contains(window),
                   window !== self.eyeTermOverlayWindow else { return }
-            // Settings window (only non-panel) stays on top while open
+            // Settings window stays on top while open
             if !(window is NSPanel) {
-                window.level = .screenSaver
+                window.level = AppCoordinator.settingsWindowLevel
                 return
             }
             window.level = .normal
@@ -826,7 +892,8 @@ final class AppCoordinator {
                   NSApp.windows.contains(window),
                   window !== self.eyeTermOverlayWindow,
                   !(window is NSPanel) else { return }
-            window.level = .screenSaver
+            window.level = AppCoordinator.settingsWindowLevel
+            NSApp.activate(ignoringOtherApps: true)
         }
     }
 
@@ -866,8 +933,28 @@ final class AppCoordinator {
 
     func restartEyeTracking() {
         guard appState.isEyeTrackingActive else { return }
+        let previewWasVisible = appState.isCameraPreviewVisible
+        if previewWasVisible { destroyCameraPreview() }
         stopEyeTracking()
         startEyeTracking()
+        if previewWasVisible { showCameraPreview() }
+    }
+
+    /// Resolve an AVCaptureDevice from a uniqueID using DiscoverySession — the same
+    /// mechanism AppState uses for the camera picker, which is more reliable than
+    /// AVCaptureDevice(uniqueID:) which can silently return nil.
+    /// Returns nil if uniqueID is empty or the device is not currently connected.
+    static func resolveCamera(uniqueID: String) -> AVCaptureDevice? {
+        guard !uniqueID.isEmpty else { return nil }
+        let types: [AVCaptureDevice.DeviceType]
+        if #available(macOS 14.0, *) {
+            types = [.builtInWideAngleCamera, .external]
+        } else {
+            types = [.builtInWideAngleCamera, .continuityCamera]
+        }
+        let session = AVCaptureDevice.DiscoverySession(
+            deviceTypes: types, mediaType: .video, position: .unspecified)
+        return session.devices.first { $0.uniqueID == uniqueID }
     }
 
     private func registerScreenChangeListener() {
@@ -917,7 +1004,12 @@ final class AppCoordinator {
     // MARK: - Camera Preview
 
     func showCameraPreview() {
-        guard cameraPreviewWindow == nil else { return }
+        if let panel = cameraPreviewWindow {
+            // Window already exists — just unhide it (keeps the live preview layer intact)
+            panel.makeKeyAndOrderFront(nil)
+            appState.isCameraPreviewVisible = true
+            return
+        }
 
         let preview = CameraPreviewView(captureSession: activeBackend.activeCaptureSession)
             .environment(appState)
@@ -934,6 +1026,7 @@ final class AppCoordinator {
         panel.isReleasedWhenClosed = false
         panel.center()
         panel.delegate = CameraPreviewWindowDelegate { [weak self] in
+            // User clicked the window's X button — fully discard it
             self?.cameraPreviewWindow = nil
             self?.appState.isCameraPreviewVisible = false
         }
@@ -944,7 +1037,15 @@ final class AppCoordinator {
         appState.isCameraPreviewVisible = true
     }
 
+    /// Soft-hide: keeps the window alive so the preview layer stays connected.
+    /// Use this for the Settings toggle button.
     func dismissCameraPreview() {
+        cameraPreviewWindow?.orderOut(nil)
+        appState.isCameraPreviewVisible = false
+    }
+
+    /// Hard-destroy: closes and nils the window. Use before session/backend changes.
+    private func destroyCameraPreview() {
         cameraPreviewWindow?.close()
         cameraPreviewWindow = nil
         appState.isCameraPreviewVisible = false
@@ -1249,6 +1350,42 @@ final class AppCoordinator {
         mediaPipeSetupWindow = nil
     }
 
+    func showPermissionsPanel(onAllGrantedDone: (() -> Void)? = nil) {
+        // If a gate-mode open is requested, always close existing and reopen
+        // so the callback is wired correctly.
+        if onAllGrantedDone != nil, permissionsWindow != nil {
+            dismissPermissionsPanel()
+        }
+        if let existing = permissionsWindow {
+            existing.makeKeyAndOrderFront(nil)
+            return
+        }
+        var view = PermissionsView { [weak self] in self?.dismissPermissionsPanel() }
+        view.onAllGrantedDone = onAllGrantedDone
+        let hosting = NSHostingView(rootView: view)
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 340),
+            styleMask: [.titled, .closable, .fullSizeContentView, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        panel.title = "Permissions"
+        panel.isMovableByWindowBackground = true
+        panel.level = .floating
+        panel.contentView = hosting
+        panel.delegate = PermissionsWindowDelegate { [weak self] in
+            self?.permissionsWindow = nil
+        }
+        panel.center()
+        panel.makeKeyAndOrderFront(nil)
+        permissionsWindow = panel
+    }
+
+    func dismissPermissionsPanel() {
+        permissionsWindow?.close()
+        permissionsWindow = nil
+    }
+
     deinit {
         if deviceChangeListenerRegistered, let block = deviceChangeListenerBlock {
             var address = AudioObjectPropertyAddress(
@@ -1291,6 +1428,18 @@ private final class ErrorDetailsWindowDelegate: NSObject, NSWindowDelegate {
 }
 
 private final class OnboardingWindowDelegate: NSObject, NSWindowDelegate {
+    let onClose: () -> Void
+
+    init(onClose: @escaping () -> Void) {
+        self.onClose = onClose
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        onClose()
+    }
+}
+
+private final class PermissionsWindowDelegate: NSObject, NSWindowDelegate {
     let onClose: () -> Void
 
     init(onClose: @escaping () -> Void) {

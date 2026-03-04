@@ -31,6 +31,10 @@ final class AppState {
     var preferredTerminal: PreferredTerminal = .iTerm2
     var terminalLaunchCommand: String = "claude --dangerously-skip-permissions"
     var terminalSetupMode: TerminalSetupMode = .adoptExisting
+    var selectedProjectFolders: [URL] = []
+    var claudeInitialPrompt: String = ""
+    var claudeInitialPromptStagger: Double = 2.0
+    var renameWindowsToProjectName: Bool = true
 
     // MARK: - Dwell Progress
     var dwellProgress: Double = 0
@@ -116,6 +120,10 @@ final class AppState {
         slotPartialTranscriptions = updated
     }
 
+    func clearAllPartials() {
+        slotPartialTranscriptions = [:]
+    }
+
     // MARK: - Eye Tracking Points (for overlay)
     var rawEyePoint: CGPoint = .zero
     var calibratedEyePoint: CGPoint = .zero
@@ -183,6 +191,14 @@ final class AppState {
             position: .unspecified
         )
         availableCameras = session.devices.map { (uid: $0.uniqueID, name: $0.localizedName) }
+
+        // If selected camera is not connected, fall back to built-in.
+        let selectedExists = !selectedCameraDeviceID.isEmpty &&
+            session.devices.contains(where: { $0.uniqueID == selectedCameraDeviceID })
+        if !selectedExists,
+           let builtin = session.devices.first(where: { $0.deviceType == .builtInWideAngleCamera }) {
+            selectedCameraDeviceID = builtin.uniqueID
+        }
     }
 
     /// Writes current tunable settings to a JSON file in the project source tree.
@@ -236,6 +252,7 @@ final class AppState {
             "showWinkOverlay": showWinkOverlay,
             "showCommandFlash": showCommandFlash,
             "winkDipThreshold": winkDipThreshold,
+            "selectedCameraDeviceID": selectedCameraDeviceID,
         ]
 
         guard let data = try? JSONSerialization.data(withJSONObject: settings, options: [.prettyPrinted, .sortedKeys]) else { return }
@@ -305,6 +322,11 @@ final class AppState {
             "showWinkOverlay": showWinkOverlay,
             "showCommandFlash": showCommandFlash,
             "winkDipThreshold": winkDipThreshold,
+            "selectedProjectFolders": selectedProjectFolders.map { $0.path },
+            "claudeInitialPrompt": claudeInitialPrompt,
+            "claudeInitialPromptStagger": claudeInitialPromptStagger,
+            "renameWindowsToProjectName": renameWindowsToProjectName,
+            "selectedCameraDeviceID": selectedCameraDeviceID,
         ]
         // Include calibration transforms from UserDefaults so they survive reinstalls.
         var mutable = settings
@@ -336,6 +358,7 @@ final class AppState {
         if let v = dict["debugSmoothing"] as? Double { debugSmoothing = v }
         if let v = dict["micSensitivity"] as? Double { micSensitivity = v }
         if let v = dict["selectedMicDeviceUID"] as? String { selectedMicDeviceUID = v }
+        if let v = dict["selectedCameraDeviceID"] as? String { selectedCameraDeviceID = v }
         if let v = dict["overlayIconSize"] as? Double { overlayIconSize = v }
         if let v = dict["fusionDotSize"] as? Double { fusionDotSize = v }
         if let v = dict["smoothedCircleSize"] as? Double { smoothedCircleSize = v }
@@ -366,6 +389,10 @@ final class AppState {
         if let v = dict["showWinkOverlay"] as? Bool { showWinkOverlay = v }
         if let v = dict["showCommandFlash"] as? Bool { showCommandFlash = v }
         if let v = dict["winkDipThreshold"] as? Double { winkDipThreshold = v }
+        if let v = dict["selectedProjectFolders"] as? [String] { selectedProjectFolders = v.map { URL(fileURLWithPath: $0) } }
+        if let v = dict["claudeInitialPrompt"] as? String { claudeInitialPrompt = v }
+        if let v = dict["claudeInitialPromptStagger"] as? Double { claudeInitialPromptStagger = v }
+        if let v = dict["renameWindowsToProjectName"] as? Bool { renameWindowsToProjectName = v }
 
         // Restore calibration transforms back to UserDefaults so CalibrationManager
         // picks them up on next launch (it reads from UserDefaults on init).
@@ -432,6 +459,7 @@ enum WinkAction: String, CaseIterable, Identifiable {
 enum TerminalSetupMode: String, CaseIterable, Identifiable {
     case launchNew = "Create New"
     case adoptExisting = "Use Existing"
+    case chooseProjects = "Choose Projects"
 
     var id: String { rawValue }
 }

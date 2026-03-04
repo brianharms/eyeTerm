@@ -627,3 +627,51 @@ Fix SFSpeechRecognizer voice backend (user rejected WhisperKit), fix crash on vo
 - Integration path: load .mlmodel in Swift, feed camera frames, get yaw/pitch, fuse with existing head/eye weight system
 - Repo: github.com/Ahmednull/L2CS-Net (Apache 2.0 license)
 - Lightweight variant: github.com/yakhyo/gaze-estimation
+
+---
+
+## Session — 2026-03-03 23:56
+
+### Goal
+Fix the rename-window Claude Code skill (TTY approach wasn't working), add persistent window renaming to eyeTerm's terminal setup, and fix the permissions gate that was hiding the menu bar status item.
+
+### Accomplished
+- **v0.41** — Voice overlay auto-dismiss: after final transcription, partial text clears after 4s delay (`partialClearTask` in AppCoordinator, `clearAllPartials()` on AppState)
+- **v0.42** — Permissions gate: `startAll()` checks all permissions first, shows PermissionsView with `onAllGrantedDone` callback before launching terminals. "Launch eyeTerm" button appears (green, prominent) when all permissions granted.
+- **v0.43** — Fixed menu bar disappearing after permissions panel: removed `NSApp.activate(ignoringOtherApps: true)` from `showPermissionsPanel()`; removed `requestAccessibility()` and `requestAutomation()` from `startAll()` (only camera/mic/speech are auto-requested; accessibility/automation left to individual Grant buttons)
+- **v0.44** — Persistent window rename in TerminalManager: replaced direct `set name to` AppleScript (non-persistent) with Cmd+I → Tab×3 → type → Enter → Cmd+W dialog approach (persistent). Updated `setupProjectTerminals()` rename block.
+- **rename-window skill** rewritten to: single-window only, Tab×3 to Window Title field, Cmd+W to close dialog
+- **rename-all skill** created (`~/.claude/commands/rename-all.md`): renames ALL iTerm2 windows, isolated dialog cycle per window
+- Confirmed accessibility tree of Edit Session dialog: 5 AXTextFields in `tab group 1 of group 1 of window "Edit Session"`, field 5 = Window Title (current value). Tab×3 from dialog open lands on Window Title field.
+
+### In Progress / Incomplete
+- rename-all and rename-window skills have NOT been live-tested beyond the single window test (which succeeded). The per-window loop in rename-all is untested.
+- TerminalManager's new Cmd+I approach in `setupProjectTerminals()` is untested — requires a full terminal launch with `renameWindowsToProjectName: true`.
+
+### Key Decisions
+- **Tab×3 over accessibility tree traversal**: discovered Tab×3 from dialog open reliably lands on Window Title field. Accessibility approach (AXTextField by index) failed because fields are inside nested tab group.
+- **Per-window dialog cycle**: each window opens/closes its own dialog cycle. Dialog stays open between windows was rejected because keystrokes could leak to terminal shells if dialog loses focus on window switch.
+- **Cmd+W closes dialog (not terminal)**: after Enter in dialog, dialog remains frontmost. Cmd+W closes the dialog panel. No second Cmd+I needed.
+- **Don't call `NSApp.activate()` on LSUIElement apps**: known to destabilize status bar items. Removed from `showPermissionsPanel()`.
+- **startAll() only auto-requests camera/mic/speech**: accessibility opens System Preferences (can't auto-confirm), automation targets iTerm2 (may not be running). These are left to the PermissionsView's individual Grant buttons.
+
+### Files Changed
+- `Sources/EyeTerm/App/AppVersion.swift` — bumped 0.40 → 0.41 → 0.42 → 0.43 → 0.44
+- `Sources/EyeTerm/App/AppState.swift` — added `clearAllPartials()`
+- `Sources/EyeTerm/App/AppCoordinator.swift` — `partialClearTask`, rewritten `startAll()`, updated `showPermissionsPanel()` (removed NSApp.activate)
+- `Sources/EyeTerm/UI/PermissionsView.swift` — added `onAllGrantedDone` callback, `isGateMode`, conditional "Launch eyeTerm" button
+- `Sources/EyeTerm/Terminal/TerminalManager.swift` — renamed block in `setupProjectTerminals()` now uses Cmd+I dialog approach
+- `~/.claude/commands/rename-window.md` — rewritten: single-window, Tab×3, Cmd+W
+- `~/.claude/commands/rename-all.md` — NEW: renames all iTerm2 windows
+
+### Known Issues
+- `renameWindowsToProjectName` toggle in SettingsView (line 830) exists and persists correctly. eyeTerm's new rename approach uses `iTermWindowIDs[i]` — if a window ID is nil for a slot, that slot is silently skipped.
+- `waitForPromptDialog()` in TerminalManager was designed for Claude Code sessions running `/rename-window` (which opened sheets). Now that eyeTerm handles rename natively, this stagger mechanism may be redundant for the rename step (it's still used for `initialPrompt` staggering).
+
+### Running Services
+- eyeTerm v0.44 launched at `/Applications/eyeTerm.app`
+
+### Next Steps
+- Test `rename-all` skill with multiple iTerm2 windows open
+- Test eyeTerm terminal setup with `renameWindowsToProjectName: true` to verify Cmd+I approach works during setup
+- Consider whether `waitForPromptDialog()` stagger is still needed now that eyeTerm handles rename internally
