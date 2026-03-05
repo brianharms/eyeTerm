@@ -4,6 +4,52 @@ This file tracks session handoffs so the next Claude Code instance can quickly g
 
 ---
 
+## Session — 2026-03-04 19:35
+
+### Goal
+1. Fix crash when clicking "Adopt Terminals" while eye tracking was active (EXC_BREAKPOINT / SIGTRAP — "Must only be used from the main thread")
+2. Implement per-camera wink profiles (each camera device stores its own set of 7 wink thresholds)
+
+### Accomplished
+- **Crash fix (v0.52)**: `dismissEyeTermOverlay()` and `destroyCameraPreview()` in `AppCoordinator.swift` now dispatch `NSWindow.close()` to `DispatchQueue.main.async`. Root cause was `setupTerminals()` → `stopEyeTracking()` → `dismissEyeTermOverlay()` calling NSWindow ops off main thread from a cooperative async Task.
+- **Per-camera wink profiles (v0.53)**:
+  - Added `WinkProfile` struct to `AppState.swift` (below `WinkEvent`) with 7 threshold fields, `asDictionary()`, two inits (`memberwise` + `init?(from: [String: Double])`)
+  - Added `winkProfiles: [String: WinkProfile]` property + `captureCurrentWinkProfile(for:)` + `applyWinkProfile(for:)` methods on `AppState`
+  - Added `winkProfiles` serialization to both `saveSettingsAsDefaults()` and `persistSettings()` in `AppState`
+  - Added `winkProfiles` loading + `applyWinkProfile(for: selectedCameraDeviceID)` call in `loadPersistedSettings()` in `AppState`
+  - Added `private var previousCameraID: String = ""` to `AppCoordinator` properties
+  - Initialized `previousCameraID = appState.selectedCameraDeviceID` in `AppCoordinator.init` after `refreshAvailableCameras()`
+  - Added camera-change detection block at top of `pushAllSettings()`: if camera changed → `applyWinkProfile(for: currentCamID)`, else → `captureCurrentWinkProfile(for: currentCamID)`
+  - Updated SettingsView `DisclosureGroup` label to show camera name: `"Wink Gestures — [Camera Name]"`
+- Built and deployed v0.53 to `/Applications/eyeTerm.app`
+
+### In Progress / Incomplete
+- Nothing — both features are fully implemented and deployed
+
+### Key Decisions
+- **Thread safety via DispatchQueue.main.async** rather than `@MainActor` annotations — `@MainActor` caused a cascade of compiler errors at all non-actor callsites. Internal dispatch is more surgical.
+- **Camera profile save/load in `pushAllSettings()`** — every settings change captures the current camera's profile; camera switches load the saved profile. The follow-up `pushAllSettings()` triggered by `applyWinkProfile`'s property changes is harmless (just re-saves the same values).
+- **No `isApplyingProfile` flag needed** — the async dispatch of `withObservationTracking` onChange means re-entrancy isn't a real concern; the duplicate save on camera switch is benign.
+- **`WinkProfile` uses `[String: Double]` for JSON** — consistent with the existing `[String: Any]` / `JSONSerialization` pattern in AppState persistence.
+
+### Files Changed
+- `Sources/EyeTerm/App/AppVersion.swift` — bumped 0.52 → 0.53
+- `Sources/EyeTerm/App/AppState.swift` — added `WinkProfile` struct, `winkProfiles` property + methods, updated `saveSettingsAsDefaults`/`persistSettings`/`loadPersistedSettings`
+- `Sources/EyeTerm/App/AppCoordinator.swift` — crash fix (main thread dispatch), `previousCameraID` property, init, camera-change detection in `pushAllSettings()`
+- `Sources/EyeTerm/UI/SettingsView.swift` — DisclosureGroup label shows camera name
+
+### Known Issues
+- None from this session
+
+### Running Services
+- `eyeTerm.app` running at `/Applications/eyeTerm.app` (v0.53)
+
+### Next Steps
+- Test per-camera wink profiles with two different cameras: verify switching cameras loads distinct thresholds, verify "Save Defaults" persists per-camera profiles
+- Consider adding a visual indicator in Settings when a camera has a saved custom profile vs. using defaults
+
+---
+
 ## Session — 2026-02-26 18:30
 
 ### Goal

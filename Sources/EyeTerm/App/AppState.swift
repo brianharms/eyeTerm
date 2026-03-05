@@ -97,6 +97,30 @@ final class AppState {
     var bilateralRejectWindow: Double = 0.1
     var winkCooldown: Double = 0.8
     var winkDipThreshold: Double = 0.3
+    var winkProfiles: [String: WinkProfile] = [:]
+
+    func captureCurrentWinkProfile(for cameraID: String) {
+        winkProfiles[cameraID] = WinkProfile(
+            winkClosedThreshold: winkClosedThreshold,
+            winkOpenThreshold: winkOpenThreshold,
+            winkDipThreshold: winkDipThreshold,
+            minWinkDuration: minWinkDuration,
+            maxWinkDuration: maxWinkDuration,
+            bilateralRejectWindow: bilateralRejectWindow,
+            winkCooldown: winkCooldown
+        )
+    }
+
+    func applyWinkProfile(for cameraID: String) {
+        guard let profile = winkProfiles[cameraID] else { return }
+        winkClosedThreshold = profile.winkClosedThreshold
+        winkOpenThreshold = profile.winkOpenThreshold
+        winkDipThreshold = profile.winkDipThreshold
+        minWinkDuration = profile.minWinkDuration
+        maxWinkDuration = profile.maxWinkDuration
+        bilateralRejectWindow = profile.bilateralRejectWindow
+        winkCooldown = profile.winkCooldown
+    }
 
     // MARK: - Blink Gesture Diagnostics (not persisted)
     var leftEyeAperture: Double = 0
@@ -253,6 +277,7 @@ final class AppState {
             "showCommandFlash": showCommandFlash,
             "winkDipThreshold": winkDipThreshold,
             "selectedCameraDeviceID": selectedCameraDeviceID,
+            "winkProfiles": winkProfiles.mapValues { $0.asDictionary() },
         ]
 
         guard let data = try? JSONSerialization.data(withJSONObject: settings, options: [.prettyPrinted, .sortedKeys]) else { return }
@@ -327,6 +352,7 @@ final class AppState {
             "claudeInitialPromptStagger": claudeInitialPromptStagger,
             "renameWindowsToProjectName": renameWindowsToProjectName,
             "selectedCameraDeviceID": selectedCameraDeviceID,
+            "winkProfiles": winkProfiles.mapValues { $0.asDictionary() },
         ]
         // Include calibration transforms from UserDefaults so they survive reinstalls.
         var mutable = settings
@@ -393,6 +419,14 @@ final class AppState {
         if let v = dict["claudeInitialPrompt"] as? String { claudeInitialPrompt = v }
         if let v = dict["claudeInitialPromptStagger"] as? Double { claudeInitialPromptStagger = v }
         if let v = dict["renameWindowsToProjectName"] as? Bool { renameWindowsToProjectName = v }
+        if let rawProfiles = dict["winkProfiles"] as? [String: [String: Double]] {
+            var loaded: [String: WinkProfile] = [:]
+            for (uid, profileDict) in rawProfiles {
+                if let profile = WinkProfile(from: profileDict) { loaded[uid] = profile }
+            }
+            winkProfiles = loaded
+        }
+        applyWinkProfile(for: selectedCameraDeviceID)
 
         // Restore calibration transforms back to UserDefaults so CalibrationManager
         // picks them up on next launch (it reads from UserDefaults on init).
@@ -469,4 +503,53 @@ struct WinkEvent {
     let side: Side
     let action: WinkAction
     let timestamp: Date
+}
+
+struct WinkProfile {
+    var winkClosedThreshold: Double
+    var winkOpenThreshold: Double
+    var winkDipThreshold: Double
+    var minWinkDuration: Double
+    var maxWinkDuration: Double
+    var bilateralRejectWindow: Double
+    var winkCooldown: Double
+
+    func asDictionary() -> [String: Double] {
+        ["winkClosedThreshold": winkClosedThreshold,
+         "winkOpenThreshold": winkOpenThreshold,
+         "winkDipThreshold": winkDipThreshold,
+         "minWinkDuration": minWinkDuration,
+         "maxWinkDuration": maxWinkDuration,
+         "bilateralRejectWindow": bilateralRejectWindow,
+         "winkCooldown": winkCooldown]
+    }
+
+    init(winkClosedThreshold: Double, winkOpenThreshold: Double, winkDipThreshold: Double,
+         minWinkDuration: Double, maxWinkDuration: Double,
+         bilateralRejectWindow: Double, winkCooldown: Double) {
+        self.winkClosedThreshold = winkClosedThreshold
+        self.winkOpenThreshold = winkOpenThreshold
+        self.winkDipThreshold = winkDipThreshold
+        self.minWinkDuration = minWinkDuration
+        self.maxWinkDuration = maxWinkDuration
+        self.bilateralRejectWindow = bilateralRejectWindow
+        self.winkCooldown = winkCooldown
+    }
+
+    init?(from dict: [String: Double]) {
+        guard let closed = dict["winkClosedThreshold"],
+              let open = dict["winkOpenThreshold"],
+              let dip = dict["winkDipThreshold"],
+              let minD = dict["minWinkDuration"],
+              let maxD = dict["maxWinkDuration"],
+              let bilateral = dict["bilateralRejectWindow"],
+              let cooldown = dict["winkCooldown"] else { return nil }
+        self.winkClosedThreshold = closed
+        self.winkOpenThreshold = open
+        self.winkDipThreshold = dip
+        self.minWinkDuration = minD
+        self.maxWinkDuration = maxD
+        self.bilateralRejectWindow = bilateral
+        self.winkCooldown = cooldown
+    }
 }

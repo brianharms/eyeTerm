@@ -31,6 +31,7 @@ final class AppCoordinator {
     private var partialTerminalTask: Task<Void, Never>?
     private var partialClearTask: Task<Void, Never>?
     private var windowObserver: NSKeyValueObservation?
+    private var previousCameraID: String = ""
 
     let mediaPipeSetupManager = MediaPipeSetupManager()
     private var mediaPipeSetupWindow: NSPanel?
@@ -59,6 +60,7 @@ final class AppCoordinator {
         wireCallbacks()
         wireBlinkDetector()
         appState.refreshAvailableCameras()
+        previousCameraID = appState.selectedCameraDeviceID
         appState.refreshAvailableDisplays()
         pushAllSettings()
         observeSettings()
@@ -466,6 +468,16 @@ final class AppCoordinator {
     }
 
     private func pushAllSettings() {
+        let currentCamID = appState.selectedCameraDeviceID
+        if currentCamID != previousCameraID {
+            // Camera changed: load saved wink profile for the new camera (if any)
+            appState.applyWinkProfile(for: currentCamID)
+            previousCameraID = currentCamID
+        } else {
+            // Same camera: capture current wink settings into this camera's profile
+            appState.captureCurrentWinkProfile(for: currentCamID)
+        }
+
         dwellTimer.dwellThreshold = appState.dwellTimeThreshold
         dwellTimer.hysteresisDelay = appState.hysteresisDelay
         commandParser.enableNormalization = appState.enableTextNormalization
@@ -997,8 +1009,10 @@ final class AppCoordinator {
     }
 
     private func dismissEyeTermOverlay() {
-        eyeTermOverlayWindow?.close()
-        eyeTermOverlayWindow = nil
+        DispatchQueue.main.async { [weak self] in
+            self?.eyeTermOverlayWindow?.close()
+            self?.eyeTermOverlayWindow = nil
+        }
     }
 
     // MARK: - Camera Preview
@@ -1046,9 +1060,11 @@ final class AppCoordinator {
 
     /// Hard-destroy: closes and nils the window. Use before session/backend changes.
     private func destroyCameraPreview() {
-        cameraPreviewWindow?.close()
-        cameraPreviewWindow = nil
-        appState.isCameraPreviewVisible = false
+        DispatchQueue.main.async { [weak self] in
+            self?.cameraPreviewWindow?.close()
+            self?.cameraPreviewWindow = nil
+            self?.appState.isCameraPreviewVisible = false
+        }
     }
 
     // MARK: - Waveform Panel

@@ -6,6 +6,12 @@ struct SettingsView: View {
 
     @State private var showDescriptions = false
     @FocusState private var customKeywordFocused: Bool
+    @State private var trackingExpanded = false
+    @State private var visualizationExpanded = false
+    @State private var winksExpanded = false
+    @State private var voiceExpanded = false
+    @State private var terminalsExpanded = false
+    @State private var onboardingExpanded = false
 
     private let whisperModels = ["tiny.en", "base.en", "small.en", "medium.en"]
     private let keywordPresets = ["run it", "go ahead", "do it", "execute"]
@@ -14,6 +20,32 @@ struct SettingsView: View {
         @Bindable var state = appState
 
         Form {
+            Section {
+                HStack(spacing: 14) {
+                    Image(nsImage: NSImage(named: "AppIcon") ?? NSImage())
+                        .resizable()
+                        .frame(width: 52, height: 52)
+                        .cornerRadius(12)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("eyeTerm")
+                            .font(.headline)
+                        Text("gaze-controlled claude terminals, hands-free.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text("Created by Ritual.Industries.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                .overlay(alignment: .topTrailing) {
+                    Text("v\(AppVersion.current)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 4)
+            }
+
             Section {
                 Button {
                     Task { await coordinator.startAll() }
@@ -27,7 +59,8 @@ struct SettingsView: View {
                 Toggle("Show Setting Descriptions", isOn: $showDescriptions)
             }
 
-            Section("Eye Tracking") {
+            Section {
+                DisclosureGroup(isExpanded: $trackingExpanded) {
                 HStack {
                     Button {
                         if state.isEyeTrackingActive {
@@ -62,15 +95,24 @@ struct SettingsView: View {
                 }
 
                 described("Which camera to use for eye tracking. Changing restarts the tracker.") {
-                    Picker("Camera", selection: $state.selectedCameraDeviceID) {
-                        Text("System Default").tag("")
-                        ForEach(state.availableCameras, id: \.uid) { cam in
-                            Text(cam.name).tag(cam.uid)
+                    HStack {
+                        Picker("Camera", selection: $state.selectedCameraDeviceID) {
+                            Text("System Default").tag("")
+                            ForEach(state.availableCameras, id: \.uid) { cam in
+                                Text(cam.name).tag(cam.uid)
+                            }
+                        }
+                        Button(state.isCameraPreviewVisible ? "Hide Preview" : "Show Preview") {
+                            if state.isCameraPreviewVisible {
+                                coordinator.dismissCameraPreview()
+                            } else {
+                                coordinator.showCameraPreview()
+                            }
                         }
                     }
                 }
 
-                described("Which display the overlay and calibration UI appear on. Pick the screen you face while working.") {
+                described("Which display the overlay and terminals appear on. Pick the screen you face while working.") {
                     Picker("Display", selection: $state.selectedDisplayID) {
                         ForEach(state.availableDisplays, id: \.id) { display in
                             Text(display.name).tag(display.id)
@@ -155,10 +197,18 @@ struct SettingsView: View {
                         }
                     }
                 }
-
+                } label: {
+                    Button { trackingExpanded.toggle() } label: {
+                        Text("Eye Tracking").frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.primary)
+                    .padding(.bottom, trackingExpanded ? 10 : 0)
+                }
             }
 
-            Section("Eye-Tracking Visualization") {
+            Section {
+                DisclosureGroup(isExpanded: $visualizationExpanded) {
                 described("Off = hidden. Subtle = small gaze dot. Debug = full diagnostic view with raw, calibrated, and smoothed points.") {
                     LabeledContent("Overlay") {
                         Picker("", selection: $state.overlayMode) {
@@ -345,9 +395,18 @@ struct SettingsView: View {
                     Toggle("Command Flash", isOn: $state.showCommandFlash)
                         .disabled(state.overlayMode == .off)
                 }
+                } label: {
+                    Button { visualizationExpanded.toggle() } label: {
+                        Text("Visualization").frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.primary)
+                    .padding(.bottom, visualizationExpanded ? 10 : 0)
+                }
             }
 
-            Section("Wink Gestures") {
+            Section {
+                DisclosureGroup(isExpanded: $winksExpanded) {
                 described("Detect deliberate one-eye winks to trigger terminal actions. Normal blinks are filtered out.") {
                     Toggle("Enable Wink Gestures", isOn: $state.blinkGesturesEnabled)
                 }
@@ -467,9 +526,19 @@ struct SettingsView: View {
                     maxDuration: appState.maxWinkDuration,
                     cooldown: appState.winkCooldown
                 )
+                } label: {
+                    Button { winksExpanded.toggle() } label: {
+                        Text("Wink Gestures\(appState.availableCameras.first(where: { $0.uid == appState.selectedCameraDeviceID }).map { " — \($0.name)" } ?? "")")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.primary)
+                    .padding(.bottom, winksExpanded ? 10 : 0)
+                }
             }
 
-            Section("Voice") {
+            Section {
+                DisclosureGroup(isExpanded: $voiceExpanded) {
                 Button {
                     if state.isVoiceActive {
                         coordinator.stopVoice()
@@ -581,9 +650,7 @@ struct SettingsView: View {
                         .padding(.top, 2)
                     }
                 }
-            }
 
-            Section("Transcription Log") {
                 HStack {
                     Text(state.voiceBackend.rawValue)
                         .font(.caption2)
@@ -662,9 +729,18 @@ struct SettingsView: View {
                     }
                     .frame(height: 100)
                 }
+                } label: {
+                    Button { voiceExpanded.toggle() } label: {
+                        Text("Voice").frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.primary)
+                    .padding(.bottom, voiceExpanded ? 10 : 0)
+                }
             }
 
-            Section("Terminal") {
+            Section {
+                DisclosureGroup(isExpanded: $terminalsExpanded) {
                 described("iTerm2 recommended for better AppleScript support and window management.") {
                     Picker("Terminal App", selection: $state.preferredTerminal) {
                         ForEach(PreferredTerminal.allCases) { terminal in
@@ -678,7 +754,7 @@ struct SettingsView: View {
                         .font(.caption)
                 }
 
-                described("Create New opens four terminal windows. Use Existing finds and adopts windows already positioned in quadrants.") {
+                described("Create New opens terminal windows in a grid. Use Existing adopts already-open terminals. Choose Projects opens one terminal per selected folder.") {
                     Picker("Setup Mode", selection: $state.terminalSetupMode) {
                         ForEach(TerminalSetupMode.allCases) { mode in
                             Text(mode.rawValue).tag(mode)
@@ -705,19 +781,106 @@ struct SettingsView: View {
                     }
                 }
 
+                if state.terminalSetupMode == .chooseProjects {
+                    described("Shell command run after cd-ing into each project folder.") {
+                        LabeledContent("Launch Command") {
+                            TextField("", text: $state.terminalLaunchCommand)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(.body, design: .monospaced))
+                        }
+                    }
+
+                    LabeledContent("Project Folders") {
+                        VStack(alignment: .leading, spacing: 4) {
+                            if state.selectedProjectFolders.isEmpty {
+                                Text("No folders selected")
+                                    .foregroundStyle(.secondary)
+                                    .font(.caption)
+                            } else {
+                                ForEach(Array(state.selectedProjectFolders.prefix(12).enumerated()), id: \.offset) { index, url in
+                                    HStack {
+                                        Text(url.lastPathComponent)
+                                            .font(.system(.caption, design: .monospaced))
+                                            .lineLimit(1)
+                                            .truncationMode(.middle)
+                                        Spacer()
+                                        Button {
+                                            state.selectedProjectFolders.remove(at: index)
+                                            appState.persistSettings()
+                                        } label: {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .buttonStyle(.borderless)
+                                    }
+                                }
+                            }
+                            Button {
+                                let panel = NSOpenPanel()
+                                panel.canChooseFiles = false
+                                panel.canChooseDirectories = true
+                                panel.allowsMultipleSelection = true
+                                panel.message = "Select project folders (max 12)"
+                                if panel.runModal() == .OK {
+                                    let existing = state.selectedProjectFolders
+                                    let newURLs = panel.urls.filter { !existing.contains($0) }
+                                    let combined = (existing + newURLs).prefix(12)
+                                    state.selectedProjectFolders = Array(combined)
+                                    appState.persistSettings()
+                                }
+                            } label: {
+                                Label("Choose Folders…", systemImage: "folder.badge.plus")
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                    }
+
+                    described("Sent to Claude in each terminal after it starts.") {
+                        LabeledContent("Initial Prompt") {
+                            TextField("e.g. summarize recent changes", text: $state.claudeInitialPrompt)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                    }
+
+                    described("Max seconds to wait for each terminal's prompt to finish before sending to the next. Exits early once any window-manipulation dialog closes.") {
+                        LabeledContent("Prompt Stagger") {
+                            HStack(spacing: 6) {
+                                TextField("20", value: $state.claudeInitialPromptStagger, format: .number)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 60)
+                                Text("sec max")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+
+                    Toggle("Rename windows to project name", isOn: $state.renameWindowsToProjectName)
+                        .onChange(of: state.renameWindowsToProjectName) { _, _ in appState.persistSettings() }
+                }
+
                 Button {
                     Task { await coordinator.setupTerminals() }
                 } label: {
-                    Label(
-                        state.terminalSetupMode == .launchNew ? "Create Terminals" : "Adopt Terminals",
-                        systemImage: state.terminalSetupMode == .launchNew ? "terminal" : "rectangle.on.rectangle"
-                    )
+                    switch state.terminalSetupMode {
+                    case .launchNew:
+                        Label("Create Terminals", systemImage: "terminal")
+                    case .adoptExisting:
+                        Label("Adopt Terminals", systemImage: "rectangle.on.rectangle")
+                    case .chooseProjects:
+                        Label("Launch Projects", systemImage: "folder.fill.badge.plus")
+                    }
                 }
-                if state.terminalSetupMode == .launchNew {
+                .disabled(state.terminalSetupMode == .chooseProjects && state.selectedProjectFolders.isEmpty)
+
+                switch state.terminalSetupMode {
+                case .launchNew:
                     settingHint("Creates \(state.terminalGridColumns * state.terminalGridRows) terminal windows in a \(state.terminalGridColumns)×\(state.terminalGridRows) grid and runs the launch command in each.")
-                } else {
+                case .adoptExisting:
                     let count = appState.terminalSlots.count
                     settingHint(count > 0 ? "\(count) slots adopted. Scans existing terminal windows and adopts them for management." : "Scans for existing terminal windows and adopts them for management.")
+                case .chooseProjects:
+                    let n = min(state.selectedProjectFolders.count, 4)
+                    settingHint(n == 0 ? "Choose folders above, then tap Launch Projects." : "Opens \(n) terminal\(n == 1 ? "" : "s") in a logical grid, cds into each folder, runs the launch command, then sends the initial prompt.")
                 }
 
                 LabeledContent("Manual Focus") {
@@ -743,14 +906,38 @@ struct SettingsView: View {
                 }
                 .disabled(appState.focusedSlot == nil || !appState.isTerminalSetup)
                 settingHint("Sends a test string to the focused terminal to verify the connection.")
+                } label: {
+                    Button { terminalsExpanded.toggle() } label: {
+                        Text("Terminals").frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.primary)
+                    .padding(.bottom, terminalsExpanded ? 10 : 0)
+                }
             }
 
-            Section("Onboarding") {
+            Section {
+                DisclosureGroup(isExpanded: $onboardingExpanded) {
                 Button("Show Walkthrough Again") {
                     OnboardingState.reset()
                     coordinator.showOnboardingWalkthrough()
                 }
                 settingHint("Re-show the first-run walkthrough explaining how eyeTerm works.")
+
+                Button {
+                    coordinator.showPermissionsPanel()
+                } label: {
+                    Label("Enable Permissions", systemImage: "lock.shield")
+                }
+                settingHint("Check and grant camera, microphone, accessibility, and automation permissions.")
+                } label: {
+                    Button { onboardingExpanded.toggle() } label: {
+                        Text("Onboarding").frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.primary)
+                    .padding(.bottom, onboardingExpanded ? 10 : 0)
+                }
             }
 
             Section {
@@ -769,7 +956,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 380, height: 640)
+        .frame(width: 380, height: 600)
     }
 
     // MARK: - Helpers
@@ -805,6 +992,7 @@ struct SettingsView: View {
                     .foregroundStyle(.tertiary)
             }
         }
+        .padding(.vertical, 3)
     }
 
     private enum LegendSymbol {
