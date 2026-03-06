@@ -4,6 +4,63 @@ This file tracks session handoffs so the next Claude Code instance can quickly g
 
 ---
 
+## Session — 2026-03-06 00:15
+
+### Goal
+Fix startup camera mismatch (preview shows wrong camera on launch) and two crash bugs discovered during testing.
+
+### Accomplished
+- **v0.82 — Camera name sync**: `syncPreviewToTrackingCamera` changed from index-based to name-based device lookup. When Python's PyObjC resolves cameras by UID, it enumerates in built-in-first order — opposite of Swift's `opencvOrderedDevices()`. Using the camera name bypasses the enumeration order mismatch entirely. Index fallback retained for environments without PyObjC.
+- **v0.83 — Main-thread NSWindow crash**: `startAll()` is non-isolated async; Swift 6 runs it on the cooperative thread pool. It was calling `showEyeTermOverlay()` (NSPanel creation = main-thread only), causing `EXC_BREAKPOINT`. Fixed by adding `@MainActor` to `startAll()` and wrapping all NSPanel/NSWindow ops in `DispatchQueue.main.async`.
+- **v0.84 — Startup KVO crash**: `setupWindowLevelObservers()` called synchronously during `AppCoordinator.init()` crashed on macOS 26 with `assertionFailure` (~150ms after launch). Root cause: `NSApp.observe(\.windows, options: [.new, .old])` fires or asserts before the AppKit event loop is running. Fixed by deferring the call with `DispatchQueue.main.async`, matching the pattern already used for `showOnboardingWalkthrough()` below it.
+
+### In Progress / Incomplete
+- **Camera desync still occurs**: User can force a resync manually (camera picker in preview) but the automatic sync on startup is still unreliable. Root cause likely in `eye_tracker.py` `find_camera_index()` — Python's camera enumeration order doesn't consistently match what Swift's `syncPreviewToTrackingCamera` expects even with name-based lookup (e.g., partial name matches, Logitech vs MacBook Pro). The plan file at `~/.claude/plans/distributed-splashing-walrus.md` has additional planned features not yet implemented (Voice/Overlay toggles in preview toolbar, blockInteractionDuringSetup setting).
+
+### Key Decisions
+- Name-based camera lookup is order-independent and more robust than index-based, but still can fail if Python reports a different/shortened name than AVFoundation's `localizedName`
+- `DispatchQueue.main.async` preferred over `@MainActor` on helper methods to avoid Swift 6 isolation errors from non-isolated callers
+
+### Files Changed
+- `Sources/EyeTerm/EyeTracking/MediaPipeBackend.swift` — `syncPreviewToTrackingCamera(cameraName:opencvIndex:onReady:)`, added `opencvOrderedDevices()`
+- `Sources/EyeTerm/App/AppCoordinator.swift` — `@MainActor startAll()`, `DispatchQueue.main.async` in `showEyeTermOverlay()` and `updateOverlayVisibility()`, deferred `setupWindowLevelObservers()`
+- `Sources/EyeTerm/App/AppVersion.swift` — bumped to 0.84
+
+### Known Issues
+- Camera preview and tracking camera still occasionally desync at startup; user has manual workaround via camera picker
+- The plan at `~/.claude/plans/distributed-splashing-walrus.md` (Voice/Overlay toolbar toggles, blockInteractionDuringSetup) is unimplemented
+
+### Running Services
+- eyeTerm v0.84 running at `/Applications/eyeTerm.app`
+- No dev servers or background processes
+
+### Next Steps
+- Investigate `eye_tracker.py` `find_camera_index()` more deeply — log the exact camera name Python resolves and compare to what AVFoundation returns in Swift to narrow down remaining desync
+- Consider implementing the preview toolbar Voice/Overlay toggles from the plan file
+- Consider adding `blockInteractionDuringSetup` setting
+
+---
+
+## Session — 2026-03-05
+
+### Goal
+Ensure calibration overlay appears on the selected external monitor.
+
+### Accomplished
+- **Calibration on external monitor (v0.54)**: Added `panel.setFrame(screen.frame, display: true)` after `makeKeyAndOrderFront(nil)` in `showCalibrationOverlay()`. Root cause: `makeKeyAndOrderFront` can cause macOS to reposition a menu-bar app's panel onto the main display; explicit `setFrame` after ordering front forces the window onto the target screen.
+
+### Files Changed
+- `Sources/EyeTerm/App/AppVersion.swift` — bumped 0.53 → 0.54
+- `Sources/EyeTerm/App/AppCoordinator.swift` — `showCalibrationOverlay()`: added `panel.setFrame(screen.frame, display: true)` after `makeKeyAndOrderFront`
+
+### Known Issues
+- None new
+
+### Running Services
+- eyeTerm.app running at `/Applications/eyeTerm.app` (v0.54)
+
+---
+
 ## Session — 2026-03-04 19:35
 
 ### Goal

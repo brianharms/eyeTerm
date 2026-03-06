@@ -67,7 +67,9 @@ final class AppCoordinator {
         refreshMicList()
         registerDeviceChangeListener()
         registerScreenChangeListener()
-        setupWindowLevelObservers()
+        DispatchQueue.main.async { [weak self] in
+            self?.setupWindowLevelObservers()
+        }
 
         if !OnboardingState.hasCompleted {
             DispatchQueue.main.async { [weak self] in
@@ -110,6 +112,8 @@ final class AppCoordinator {
             self.transcriptionDiffer.reset()
             self.appState.focusedSlot = slot
             guard self.appState.isTerminalSetup else { return }
+            guard !self.appState.gazeActivationLocked else { return }
+            guard self.appState.overlayAndFocusEnabled else { return }
             Task {
                 do {
                     try await self.terminalManager.focusTerminal(slotIndex: slot)
@@ -149,32 +153,6 @@ final class AppCoordinator {
             self.partialDebounceWork = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: work)
 
-            // Stream partial text to terminal only when a slot is focused
-            guard let slot = self.appState.focusedSlot else { return }
-            let words = normalized.split(separator: " ", omittingEmptySubsequences: true)
-            guard words.count >= 2 else { return }
-            let partialText = words.joined(separator: " ")
-            self.partialTerminalTask?.cancel()
-            self.partialTerminalTask = Task { [weak self] in
-                guard let self else { return }
-                guard self.terminalManager.isSetup else { return }
-                let edit = self.transcriptionDiffer.diff(newText: partialText)
-                do {
-                    switch edit {
-                    case .noChange:
-                        break
-                    case .append(let appendStr):
-                        try await self.terminalManager.typeText(appendStr, in: slot)
-                    case .replaceFromOffset(let backspaces, let newText):
-                        try await self.terminalManager.sendBackspaces(backspaces, in: slot)
-                        if !newText.isEmpty {
-                            try await self.terminalManager.typeText(newText, in: slot)
-                        }
-                    }
-                } catch {
-                    print("[AppCoordinator] Partial terminal type failed: \(error)")
-                }
-            }
         }
 
         activeVoiceBackend.onTranscription = { [weak self] text in
@@ -296,6 +274,17 @@ final class AppCoordinator {
             mpBackend.onError = { [weak self] error in
                 self?.appState.addError("MediaPipe: \(error)")
             }
+            mpBackend.onStarted = { [weak self] idx, name in
+                guard let self else { return }
+                let label = name.isEmpty ? "camera \(idx)" : "\(name) (index \(idx))"
+                self.appState.actualTrackingCameraInfo = label
+                // Sync preview session to the camera Python actually opened.
+                // Use name-based lookup to avoid index ordering mismatch between Python and Swift.
+                // onReady fires after startRunning() so the preview layer gets a live session.
+                mpBackend.syncPreviewToTrackingCamera(cameraName: name, opencvIndex: idx) { [weak self] in
+                    self?.appState.currentPreviewSession = mpBackend.activeCaptureSession
+                }
+            }
         }
     }
 
@@ -310,12 +299,19 @@ final class AppCoordinator {
         appState.transcriptionHistory.removeAll { $0.timestamp < cutoff }
         print("[AppCoordinator] Parsed \(commands.count) commands from: \"\(text)\"")
 
+        if commands.isEmpty {
+            appState.addError("Voice: heard \"\(text)\" but nothing to send (all text was filtered)")
+            transcriptionDiffer.reset()
+            return
+        }
+
         guard let slotIndex = appState.focusedSlot else {
-            print("[AppCoordinator] No focused slot — transcription ignored. Use manual focus or eye tracking.")
+            appState.addError("Voice: heard \"\(text)\" but no terminal is focused — look at a quadrant first")
             transcriptionDiffer.reset()
             return
         }
         guard terminalManager.isSetup else {
+            appState.addError("Voice: heard text but terminals are not set up yet")
             transcriptionDiffer.reset()
             return
         }
@@ -326,21 +322,10 @@ final class AppCoordinator {
                 do {
                     switch command {
                     case .typeText(let str):
-                        let edit = self.transcriptionDiffer.finalize(finalText: str)
-                        print("[AppCoordinator] Final diff: \(edit)")
-                        switch edit {
-                        case .noChange:
-                            break
-                        case .append(let appendStr):
-                            try await self.terminalManager.typeText(appendStr, in: slotIndex)
-                        case .replaceFromOffset(let backspaces, let newText):
-                            try await self.terminalManager.sendBackspaces(backspaces, in: slotIndex)
-                            if !newText.isEmpty {
-                                try await self.terminalManager.typeText(newText, in: slotIndex)
-                            }
-                        }
+                        try await self.terminalManager.typeText(str, in: slotIndex)
                     case .execute:
                         print("[AppCoordinator] Sending Return")
+                        self.transcriptionDiffer.reset()
                         self.partialClearTask?.cancel()
                         self.partialClearTask = nil
                         self.appState.setPartial(nil, forSlot: slotIndex)
@@ -459,6 +444,9 @@ final class AppCoordinator {
             _ = appState.terminalSetupMode
             _ = appState.selectedCameraDeviceID
             _ = appState.selectedDisplayID
+            _ = appState.keepOverlayOnTop
+            _ = appState.isVoiceEnabled
+            _ = appState.overlayAndFocusEnabled
         } onChange: { [weak self] in
             DispatchQueue.main.async {
                 self?.pushAllSettings()
@@ -541,11 +529,26 @@ final class AppCoordinator {
         if cameraChanged { appState.persistSettings() }
         refreshOverlayDisplay()
         updateOverlayVisibility()
+        eyeTermOverlayWindow?.level = appState.keepOverlayOnTop ? .floating : .normal
+
+        // Voice quick-toggle: start or stop voice when isVoiceEnabled changes.
+        if !appState.isVoiceEnabled && activeVoiceBackend.isRunning {
+            stopVoice()
+        } else if appState.isVoiceEnabled && !activeVoiceBackend.isRunning && appState.isEyeTrackingActive && appState.isTerminalSetup {
+            Task { await startVoice() }
+        }
+
+        // Overlay+Focus quick-toggle: show/hide overlay panel.
+        if appState.overlayAndFocusEnabled {
+            if eyeTermOverlayWindow?.isVisible == false { eyeTermOverlayWindow?.orderFront(nil) }
+        } else {
+            eyeTermOverlayWindow?.orderOut(nil)
+        }
     }
 
     // MARK: - Start / Stop All
 
-    func startAll() async {
+    @MainActor func startAll() async {
         appState.statusMessage = "Checking permissions..."
 
         // Trigger OS prompts for camera/mic/speech if not yet determined.
@@ -600,12 +603,13 @@ final class AppCoordinator {
     // MARK: - Terminals
 
     func setupTerminals() async {
-        // Pause eye tracking during setup so gaze focus doesn't route commands to the wrong window.
-        let wasEyeTrackingActive = appState.isEyeTrackingActive
-        if wasEyeTrackingActive {
-            stopEyeTracking()
-            appState.statusMessage = "Tracking paused — setting up terminals..."
+        // Optionally lock gaze/voice during setup (controlled by blockInteractionDuringSetup setting).
+        // Eye tracking stays running so the camera preview remains visible.
+        if appState.blockInteractionDuringSetup {
+            appState.gazeActivationLocked = true
+            if activeVoiceBackend.isRunning { stopVoice() }
         }
+        appState.statusMessage = "Setting up terminals..."
 
         do {
             switch appState.terminalSetupMode {
@@ -622,8 +626,9 @@ final class AppCoordinator {
             appState.addError("Terminal setup failed: \(error.localizedDescription)")
         }
 
-        if wasEyeTrackingActive {
-            startEyeTracking()
+        if appState.blockInteractionDuringSetup {
+            appState.gazeActivationLocked = false
+            if appState.isVoiceEnabled { Task { await startVoice() } }
         }
         updateStatus()
     }
@@ -643,12 +648,11 @@ final class AppCoordinator {
         }
         updateStatus()
 
-        // Refresh camera preview if it was opened before tracking started,
-        // so it picks up the now-active capture session.
-        if appState.isCameraPreviewVisible {
-            destroyCameraPreview()
-            showCameraPreview()
-        }
+        // Restore overlay if it was dismissed when tracking stopped.
+        updateOverlayVisibility()
+
+        // Push the new live capture session to the preview window (no window close needed).
+        appState.currentPreviewSession = activeBackend.activeCaptureSession
     }
 
     func stopEyeTracking() {
@@ -656,8 +660,9 @@ final class AppCoordinator {
         dwellTimer.reset()
         appState.isEyeTrackingActive = false
         appState.activeSlot = nil
+        appState.actualTrackingCameraInfo = ""
+        appState.currentPreviewSession = nil
         dismissEyeTermOverlay()
-        destroyCameraPreview()
         updateStatus()
     }
 
@@ -794,12 +799,8 @@ final class AppCoordinator {
         pushAllSettings()
 
         if wasRunning { startEyeTracking() }
-
-        // Refresh camera preview if it's open so it uses the new backend's session.
-        if appState.isCameraPreviewVisible {
-            destroyCameraPreview()
-            showCameraPreview()
-        }
+        // Push the new backend's session to the preview window.
+        appState.currentPreviewSession = activeBackend.activeCaptureSession
     }
 
     // MARK: - Voice Backend Switching
@@ -917,7 +918,8 @@ final class AppCoordinator {
 
     private func updateOverlayVisibility() {
         if appState.overlayMode == .off {
-            eyeTermOverlayWindow?.orderOut(nil)
+            let win = eyeTermOverlayWindow
+            DispatchQueue.main.async { win?.orderOut(nil) }
         } else {
             showEyeTermOverlay()
         }
@@ -945,11 +947,24 @@ final class AppCoordinator {
 
     func restartEyeTracking() {
         guard appState.isEyeTrackingActive else { return }
-        let previewWasVisible = appState.isCameraPreviewVisible
-        if previewWasVisible { destroyCameraPreview() }
         stopEyeTracking()
         startEyeTracking()
-        if previewWasVisible { showCameraPreview() }
+        // currentPreviewSession is updated in-place by startEyeTracking/onStarted — no window close needed
+    }
+
+    /// Select a specific camera for eye tracking and force-restart immediately.
+    /// Unlike setting appState.selectedCameraDeviceID directly, this works even when the
+    /// requested camera is already stored as selectedCameraDeviceID (avoids the withObservationTracking
+    /// no-op when Python drifted to a different camera due to index ordering).
+    func selectTrackingCamera(uniqueID: String) {
+        // Pre-sync the backend so pushAllSettings (triggered by appState change) won't double-restart.
+        if let mp = activeBackend as? MediaPipeBackend {
+            mp.selectedCameraDeviceID = uniqueID
+        }
+        appState.selectedCameraDeviceID = uniqueID
+        if appState.isEyeTrackingActive {
+            restartEyeTracking()
+        }
     }
 
     /// Resolve an AVCaptureDevice from a uniqueID using DiscoverySession — the same
@@ -982,30 +997,35 @@ final class AppCoordinator {
     }
 
     private func showEyeTermOverlay() {
-        if let panel = eyeTermOverlayWindow {
+        // NSPanel/NSWindow operations must always run on the main thread.
+        // This function can be called from non-isolated contexts (async tasks, observers).
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            if let panel = self.eyeTermOverlayWindow {
+                panel.orderFrontRegardless()
+                return
+            }
+            let screen = self.selectedScreen()
+
+            let panel = NSPanel(
+                contentRect: screen.frame,
+                styleMask: [.borderless, .nonactivatingPanel],
+                backing: .buffered,
+                defer: false
+            )
+            panel.level = self.appState.keepOverlayOnTop ? .floating : .normal
+            panel.isOpaque = false
+            panel.backgroundColor = .clear
+            panel.hasShadow = false
+            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+            panel.ignoresMouseEvents = true
+
+            let overlayView = EyeTermOverlayView()
+                .environment(self.appState)
+            panel.contentView = NSHostingView(rootView: overlayView)
             panel.orderFrontRegardless()
-            return
+            self.eyeTermOverlayWindow = panel
         }
-        let screen = selectedScreen()
-
-        let panel = NSPanel(
-            contentRect: screen.frame,
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-        panel.level = .floating
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = false
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.ignoresMouseEvents = true
-
-        let overlayView = EyeTermOverlayView()
-            .environment(appState)
-        panel.contentView = NSHostingView(rootView: overlayView)
-        panel.orderFrontRegardless()
-        eyeTermOverlayWindow = panel
     }
 
     private func dismissEyeTermOverlay() {
@@ -1018,6 +1038,13 @@ final class AppCoordinator {
     // MARK: - Camera Preview
 
     func showCameraPreview() {
+        // Auto-start eye tracking so there's a live camera session to show.
+        if !appState.isEyeTrackingActive {
+            startEyeTracking()
+        }
+        // Ensure the session is current before the view renders.
+        appState.currentPreviewSession = activeBackend.activeCaptureSession
+
         if let panel = cameraPreviewWindow {
             // Window already exists — just unhide it (keeps the live preview layer intact)
             panel.makeKeyAndOrderFront(nil)
@@ -1025,8 +1052,9 @@ final class AppCoordinator {
             return
         }
 
-        let preview = CameraPreviewView(captureSession: activeBackend.activeCaptureSession)
+        let preview = CameraPreviewView()
             .environment(appState)
+            .environment(self)
 
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 480, height: 360),
@@ -1049,6 +1077,15 @@ final class AppCoordinator {
         panel.makeKeyAndOrderFront(nil)
         cameraPreviewWindow = panel
         appState.isCameraPreviewVisible = true
+    }
+
+    /// Switch the camera preview feed to a specific device without affecting the tracking backend.
+    /// Session is updated in-place after startRunning() completes — preview window stays open.
+    func switchPreviewCamera(uniqueID: String) {
+        guard let mp = activeBackend as? MediaPipeBackend else { return }
+        mp.switchPreviewToDevice(uniqueID: uniqueID) { [weak self] in
+            self?.appState.currentPreviewSession = mp.activeCaptureSession
+        }
     }
 
     /// Soft-hide: keeps the window alive so the preview layer stays connected.
@@ -1255,6 +1292,9 @@ final class AppCoordinator {
         )
         panel.contentView = NSHostingView(rootView: overlayView)
         panel.makeKeyAndOrderFront(nil)
+        // Explicitly enforce position on the target screen — makeKeyAndOrderFront can
+        // cause macOS to reposition a panel onto the main display for a menu-bar app.
+        panel.setFrame(screen.frame, display: true)
         calibrationOverlayWindow = panel
     }
 

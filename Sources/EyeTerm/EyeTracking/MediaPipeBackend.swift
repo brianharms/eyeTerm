@@ -11,6 +11,8 @@ final class MediaPipeBackend: EyeTrackingBackend {
     var onDiagnostics: ((EyeTermDiagnostics) -> Void)?
     var onFaceObservation: ((FaceObservationData?) -> Void)?
     var onError: ((String) -> Void)?
+    /// Fires once when the Python process reports it has started, with (cameraIndex, cameraName).
+    var onStarted: ((Int, String) -> Void)?
 
     var smoothingAlpha: Double {
         get { emaFilter.alpha }
@@ -28,8 +30,15 @@ final class MediaPipeBackend: EyeTrackingBackend {
 
     private(set) var isRunning = false
 
+    /// Camera device unique ID — empty string means system default.
+    var selectedCameraDeviceID: String = ""
+
     /// Camera preview session (display only — MediaPipe Python process does actual tracking).
     var activeCaptureSession: AVCaptureSession? { previewSession }
+
+    /// Camera actually being used by the Python process (set once startup message arrives).
+    private(set) var actualTrackingCameraName: String = ""
+    private(set) var actualTrackingCameraIndex: Int = -1
 
     /// Optional path to a venv Python executable. When set, used directly instead of `env python3`.
     var pythonExecutable: String? = nil
@@ -39,6 +48,8 @@ final class MediaPipeBackend: EyeTrackingBackend {
     private var emaFilter = EyeTermEMAFilter()
     private var previewSession: AVCaptureSession?
     private let processingQueue = DispatchQueue(label: "com.eyeterm.mediapipe", qos: .userInteractive)
+    /// Separate queue for preview session start/stop so they don't block behind readLoop on processingQueue.
+    private let previewQueue = DispatchQueue(label: "com.eyeterm.preview", qos: .userInitiated)
 
     // MARK: - Lifecycle
 
@@ -79,13 +90,18 @@ final class MediaPipeBackend: EyeTrackingBackend {
             "GL version", "TensorFlow Lite XNNPACK", "NORM_RECT"
         ]
 
+        let cameraArg = String(cameraIndex(for: selectedCameraDeviceID))
+        let cameraName = selectedCameraDeviceID.isEmpty
+            ? ""
+            : (AVCaptureDevice(uniqueID: selectedCameraDeviceID)?.localizedName ?? "")
+        let cameraUID = selectedCameraDeviceID
         let proc = Process()
         if let venvPython = pythonExecutable {
             proc.executableURL = URL(fileURLWithPath: venvPython)
-            proc.arguments = ["-u", scriptPath]
+            proc.arguments = ["-u", scriptPath, "--camera", cameraArg, "--camera-name", cameraName, "--camera-uid", cameraUID]
         } else {
             proc.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            proc.arguments = ["python3", "-u", scriptPath]
+            proc.arguments = ["python3", "-u", scriptPath, "--camera", cameraArg, "--camera-name", cameraName, "--camera-uid", cameraUID]
         }
 
         let pipe = Pipe()
@@ -140,38 +156,140 @@ final class MediaPipeBackend: EyeTrackingBackend {
 
     func stop() {
         guard isRunning else { return }
+        // Nil the handler before terminating so the stale async dispatch
+        // doesn't reset isRunning=false after a subsequent startEyeTracking().
+        // Don't call waitUntilExit() — it blocks and spins the main RunLoop, which
+        // can trigger re-entrant pushAllSettings() calls or cause hangs if Python
+        // doesn't respond to SIGTERM immediately. The readLoop exits naturally when
+        // the pipe's write end closes (as soon as the process dies).
+        process?.terminationHandler = nil
         process?.terminate()
-        process?.waitUntilExit()
         process = nil
         stdoutPipe = nil
         isRunning = false
         emaFilter.reset()
         teardownPreviewSession()
+        actualTrackingCameraName = ""
+        actualTrackingCameraIndex = -1
     }
 
     // MARK: - Preview Session
 
     private func setupPreviewSession() throws {
-        let session = AVCaptureSession()
-        session.sessionPreset = .medium
-
-        guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front) else {
-            // Not fatal — preview just won't work.
-            return
+        let camera: AVCaptureDevice?
+        if !selectedCameraDeviceID.isEmpty,
+           let device = AVCaptureDevice(uniqueID: selectedCameraDeviceID) {
+            camera = device
+        } else {
+            camera = opencvOrderedDevices().first
         }
-
-        guard let input = try? AVCaptureDeviceInput(device: camera),
-              session.canAddInput(input) else {
-            return
-        }
-        session.addInput(input)
-        session.startRunning()
-        previewSession = session
+        guard let camera else { return }
+        previewSession = makePreviewSession(for: camera)
     }
 
     private func teardownPreviewSession() {
-        previewSession?.stopRunning()
+        let old = previewSession
         previewSession = nil
+        previewQueue.async { old?.stopRunning() }
+    }
+
+    /// Builds an AVCaptureSession for the given device, starts it on the background queue,
+    /// and calls onReady (on main thread) once startRunning() returns.
+    private func makePreviewSession(for device: AVCaptureDevice, onReady: (() -> Void)? = nil) -> AVCaptureSession? {
+        let session = AVCaptureSession()
+        session.sessionPreset = .medium
+        guard let input = try? AVCaptureDeviceInput(device: device),
+              session.canAddInput(input) else { return nil }
+        session.addInput(input)
+        previewQueue.async {
+            session.startRunning()
+            if let onReady { DispatchQueue.main.async { onReady() } }
+        }
+        return session
+    }
+
+    /// Switches the preview session to an arbitrary device by uniqueID.
+    /// onReady fires on the main thread after the new session is running.
+    func switchPreviewToDevice(uniqueID: String, onReady: (() -> Void)? = nil) {
+        guard let device = AVCaptureDevice(uniqueID: uniqueID) else { return }
+        if let input = previewSession?.inputs.first as? AVCaptureDeviceInput,
+           input.device.uniqueID == device.uniqueID { return }
+        teardownPreviewSession()
+        guard let session = makePreviewSession(for: device, onReady: onReady) else { return }
+        previewSession = session
+    }
+
+    /// Called once Python reports back which camera it actually opened.
+    /// Uses camera name for device lookup (more reliable than index — Python and Swift may use
+    /// different enumeration orderings). Falls back to index-based lookup if name is empty.
+    func syncPreviewToTrackingCamera(cameraName: String, opencvIndex: Int, onReady: (() -> Void)? = nil) {
+        // Find device by name — avoids index mismatch between Python's and Swift's enumeration order.
+        var target: AVCaptureDevice?
+        if !cameraName.isEmpty {
+            let all = orderedVideoDevices() + opencvOrderedDevices()
+            target = all.first(where: { $0.localizedName == cameraName })
+                ?? all.first(where: { $0.localizedName.localizedCaseInsensitiveContains(cameraName) })
+        }
+        // Fall back to index-based lookup.
+        if target == nil {
+            let devices = opencvOrderedDevices()
+            guard opencvIndex < devices.count else { return }
+            target = devices[opencvIndex]
+        }
+        guard let target else { return }
+
+        if let input = previewSession?.inputs.first as? AVCaptureDeviceInput,
+           input.device.uniqueID == target.uniqueID {
+            onReady?()  // Already on the right camera
+            return
+        }
+
+        teardownPreviewSession()
+        guard let session = makePreviewSession(for: target, onReady: onReady) else { return }
+        previewSession = session
+    }
+
+    /// Returns video capture devices in OpenCV's enumeration order (external cameras first).
+    /// OpenCV 4.x AVFoundation backend lists external cameras before built-in —
+    /// the opposite of the standard builtIn-first DiscoverySession order.
+    private func opencvOrderedDevices() -> [AVCaptureDevice] {
+        let types: [AVCaptureDevice.DeviceType]
+        if #available(macOS 14.0, *) {
+            types = [.external, .builtInWideAngleCamera]
+        } else {
+            types = [.externalUnknown, .builtInWideAngleCamera]
+        }
+        return AVCaptureDevice.DiscoverySession(
+            deviceTypes: types,
+            mediaType: .video,
+            position: .unspecified
+        ).devices
+    }
+
+    /// Returns video capture devices in builtIn-first order (standard AVFoundation order).
+    /// Used internally where the builtIn-first enumeration is appropriate.
+    private func orderedVideoDevices() -> [AVCaptureDevice] {
+        let types: [AVCaptureDevice.DeviceType]
+        if #available(macOS 14.0, *) {
+            types = [.builtInWideAngleCamera, .external]
+        } else {
+            types = [.builtInWideAngleCamera, .externalUnknown]
+        }
+        return AVCaptureDevice.DiscoverySession(
+            deviceTypes: types,
+            mediaType: .video,
+            position: .unspecified
+        ).devices
+    }
+
+    /// Maps an AVFoundation unique device ID to an OpenCV-compatible camera index.
+    /// OpenCV 4.x AVFoundation backend lists EXTERNAL cameras before built-in —
+    /// the opposite of the standard DiscoverySession order. We must match that here.
+    /// Returns 0 when the ID is empty or not found.
+    private func cameraIndex(for uniqueID: String) -> Int {
+        guard !uniqueID.isEmpty else { return 0 }
+        let devices = opencvOrderedDevices()
+        return devices.firstIndex(where: { $0.uniqueID == uniqueID }) ?? 0
     }
 
     // MARK: - JSON Line Reader
@@ -206,7 +324,21 @@ final class MediaPipeBackend: EyeTrackingBackend {
         }
 
         // Handle status messages.
-        if json["status"] != nil { return }
+        if let status = json["status"] as? String {
+            if status == "started" {
+                let idx = json["camera_index"] as? Int ?? -1
+                let name = json["camera_name"] as? String ?? ""
+                DispatchQueue.main.async { [weak self] in
+                    self?.actualTrackingCameraIndex = idx
+                    self?.actualTrackingCameraName = name
+                    self?.onStarted?(idx, name)
+                }
+            } else if status == "camera_diag" {
+                // Diagnostic only — don't surface to UI. AVFoundation not available in mediapipe
+                // venv (PyObjC not installed) is expected; Swift handles all camera resolution.
+            }
+            return
+        }
 
         // Handle error messages — surface to UI via callback.
         if let error = json["error"] as? String {
