@@ -362,6 +362,10 @@ final class TerminalManager {
         guard !entries.isEmpty else { throw TerminalError.noWindowsToAdopt }
 
         let screenFrame = activeScreen.frame
+        // AppleScript Y origin is at top of PRIMARY screen, increasing downward.
+        let primaryH = NSScreen.screens[0].frame.height
+        let screenLeft = screenFrame.minX
+        let screenTop = primaryH - screenFrame.maxY  // AS y of the top edge of activeScreen
 
         var slots: [TerminalSlot] = []
         for (i, entry) in entries.enumerated() {
@@ -375,11 +379,11 @@ final class TerminalManager {
                 iTermSessionIDs[i] = parts[4].trimmingCharacters(in: .whitespaces)
             }
 
-            // Convert AppleScript pixel coords to normalized (0–1) fractions
-            let normX = l / screenFrame.width
+            // Convert AppleScript pixel coords (global space) to normalized (0–1) fractions
+            // relative to activeScreen, accounting for the screen's origin offset.
+            let normX = (l - screenLeft) / screenFrame.width
             let normW = (r2 - l) / screenFrame.width
-            // AppleScript top is distance from screen top; convert to normalized y (0=top)
-            let normY = t / screenFrame.height
+            let normY = (t - screenTop) / screenFrame.height
             let normH = (b - t) / screenFrame.height
             let normRect = CGRect(x: normX, y: normY, width: normW, height: normH)
 
@@ -613,6 +617,11 @@ final class TerminalManager {
     private func findWindowIndex(for slotIndex: Int) async throws -> Int {
         let app = preferredTerminal.appName
         let screenFrame = activeScreen.frame
+        // AppleScript Y origin is at top of PRIMARY screen, increasing downward.
+        // Convert normalized slot center (y=0=top, relative to activeScreen) to global AS coords.
+        let primaryH = NSScreen.screens[0].frame.height
+        let screenLeft = screenFrame.minX
+        let screenTop = primaryH - screenFrame.maxY  // AS y of the top edge of activeScreen
 
         let findScript = """
             tell application "\(app)"
@@ -633,8 +642,8 @@ final class TerminalManager {
         // Position-based match using the stored normalized rect for this slot.
         // This is robust against window reordering caused by AppleScript "set index".
         let normRect = slotNormRects[slotIndex] ?? CGRect(x: 0.5, y: 0.5, width: 0, height: 0)
-        let targetMidX = normRect.midX * screenFrame.width
-        let targetMidY = normRect.midY * screenFrame.height
+        let targetMidX = screenLeft + normRect.midX * screenFrame.width
+        let targetMidY = screenTop + normRect.midY * screenFrame.height
 
         var bestIndex = 0
         var bestDistance = Double.greatestFiniteMagnitude

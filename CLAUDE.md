@@ -9,7 +9,11 @@ macOS menu bar app that lets you control four terminal quadrants using eye track
 cd "/Users/brianharms/Desktop/Claude Projects/eyeTerm"
 xcodebuild -scheme eyeTerm -configuration Debug build CODE_SIGNING_ALLOWED=NO
 
-# Launch from build artifacts
+# Deploy to /Applications (always rm -rf first to avoid nested-app bug with cp -R)
+rm -rf /Applications/eyeTerm.app && cp -R build-debug/Build/Products/Debug/eyeTerm.app /Applications/eyeTerm.app
+open /Applications/eyeTerm.app
+
+# Or launch directly from build artifacts
 open build-debug/Build/Products/Debug/eyeTerm.app
 
 # Or open in Xcode

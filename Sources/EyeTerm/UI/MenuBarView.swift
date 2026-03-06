@@ -15,14 +15,9 @@ struct MenuBarView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // ── App Identity + Status ──
-            HStack(spacing: 4) {
-                Text("eyeTerm")
-                    .font(.caption)
-                    .fontWeight(.bold)
-                Text("v\(AppVersion.current)")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
+            Text("eyeTerm  v\(AppVersion.current)")
+                .font(.caption)
+                .fontWeight(.medium)
 
             HStack(spacing: 6) {
                 Circle()
@@ -48,6 +43,14 @@ struct MenuBarView: View {
                 .font(.caption)
                 .fontWeight(.semibold)
             }
+
+            Button {
+                coordinator.cycleOverlayMode()
+            } label: {
+                Label("Overlay: \(appState.overlayMode.displayName)", systemImage: overlayIcon)
+            }
+            .buttonStyle(CompactMenuButtonStyle())
+            .font(.caption)
 
             if appState.isEyeTrackingActive || appState.isVoiceActive {
                 Button {
@@ -78,19 +81,35 @@ struct MenuBarView: View {
                 }
                 .buttonStyle(CompactMenuButtonStyle())
 
-                Button {
-                    coordinator.startCalibration()
-                } label: {
-                    Label("Calibrate", systemImage: "scope")
-                }
-                .buttonStyle(CompactMenuButtonStyle())
-                .disabled(!appState.isEyeTrackingActive)
-
                 if appState.isEyeTrackingActive {
                     quadrantLabel
                 }
             }
             .font(.caption)
+
+            Button {
+                if appState.isCameraPreviewVisible {
+                    coordinator.dismissCameraPreview()
+                } else {
+                    coordinator.showCameraPreview()
+                }
+            } label: {
+                Label(
+                    appState.isCameraPreviewVisible ? "Hide Camera" : "Camera Preview",
+                    systemImage: appState.isCameraPreviewVisible ? "video.fill" : "video"
+                )
+            }
+            .buttonStyle(CompactMenuButtonStyle())
+            .font(.caption)
+
+            Button {
+                coordinator.startCalibration()
+            } label: {
+                Label("Calibrate", systemImage: "scope")
+            }
+            .buttonStyle(CompactMenuButtonStyle())
+            .font(.caption)
+            .disabled(!appState.isEyeTrackingActive)
 
             // ── Voice ──
             sectionHeader("VOICE")
@@ -152,27 +171,13 @@ struct MenuBarView: View {
                 .buttonStyle(CompactMenuButtonStyle())
                 .onHover { _ in }
                 .simultaneousGesture(TapGesture().onEnded {
-                    NSApp.activate(ignoringOtherApps: true)
+                    coordinator.bringSettingsWindowToFront()
                 })
 
                 Button {
-                    coordinator.cycleOverlayMode()
+                    coordinator.showPermissionsPanel()
                 } label: {
-                    Label("Overlay: \(appState.overlayMode.displayName)", systemImage: overlayIcon)
-                }
-                .buttonStyle(CompactMenuButtonStyle())
-
-                Button {
-                    if appState.isCameraPreviewVisible {
-                        coordinator.dismissCameraPreview()
-                    } else {
-                        coordinator.showCameraPreview()
-                    }
-                } label: {
-                    Label(
-                        appState.isCameraPreviewVisible ? "Hide Camera" : "Camera Preview",
-                        systemImage: appState.isCameraPreviewVisible ? "video.fill" : "video"
-                    )
+                    Label("Enable Permissions", systemImage: "lock.shield")
                 }
                 .buttonStyle(CompactMenuButtonStyle())
             }

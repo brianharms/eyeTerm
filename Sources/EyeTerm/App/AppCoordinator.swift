@@ -274,14 +274,14 @@ final class AppCoordinator {
             mpBackend.onError = { [weak self] error in
                 self?.appState.addError("MediaPipe: \(error)")
             }
-            mpBackend.onStarted = { [weak self] idx, name in
+            mpBackend.onStarted = { [weak self] idx, name, uid in
                 guard let self else { return }
                 let label = name.isEmpty ? "camera \(idx)" : "\(name) (index \(idx))"
                 self.appState.actualTrackingCameraInfo = label
                 // Sync preview session to the camera Python actually opened.
-                // Use name-based lookup to avoid index ordering mismatch between Python and Swift.
-                // onReady fires after startRunning() so the preview layer gets a live session.
-                mpBackend.syncPreviewToTrackingCamera(cameraName: name, opencvIndex: idx) { [weak self] in
+                // verifiedUID is the AVFoundation uniqueID Python confirmed post-open via PyObjC —
+                // unambiguous and order-independent. Falls back to name/index if PyObjC unavailable.
+                mpBackend.syncPreviewToTrackingCamera(cameraName: name, opencvIndex: idx, verifiedUID: uid) { [weak self] in
                     self?.appState.currentPreviewSession = mpBackend.activeCaptureSession
                 }
             }

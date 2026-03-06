@@ -4,7 +4,16 @@ import CoreMedia
 
 struct CameraPreviewView: View {
     @Environment(AppState.self) private var appState
-    let captureSession: AVCaptureSession?
+    @Environment(AppCoordinator.self) private var coordinator
+
+    private static func feedCameraName(from session: AVCaptureSession?) -> String {
+        (session?.inputs.first as? AVCaptureDeviceInput)?.device.localizedName ?? ""
+    }
+
+    private static func trackingCameraName(id: String) -> String {
+        guard !id.isEmpty else { return "system default" }
+        return AVCaptureDevice(uniqueID: id)?.localizedName ?? id
+    }
 
     private static func cameraAspectRatio(from session: AVCaptureSession?) -> CGSize {
         guard let session,
@@ -38,17 +47,19 @@ struct CameraPreviewView: View {
 
     var body: some View {
         @Bindable var appState = appState
+        let session = appState.currentPreviewSession
         VStack(spacing: 0) {
             ZStack {
-                if let captureSession {
-                    CameraPreviewRepresentable(captureSession: captureSession)
+                if let session {
+                    CameraPreviewRepresentable(captureSession: session)
+                        .id(ObjectIdentifier(session))
                 } else {
                     Color.black
                 }
 
                 GeometryReader { geometry in
                     let size = geometry.size
-                    let videoRect = Self.videoDisplayRect(in: size, session: captureSession)
+                    let videoRect = Self.videoDisplayRect(in: size, session: session)
 
                     // Eye visualization (face mesh + pupils)
                     if appState.showCameraEyeVisualization {
@@ -113,6 +124,42 @@ struct CameraPreviewView: View {
                         .padding(.leading, 8)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
                     }
+
+                    // Camera diagnostic (top-right) when debug overlay on
+                    if appState.showCameraDebugOverlay {
+                        let feedName = Self.feedCameraName(from: session)
+                        // Use actual Python-reported camera when available; fall back to selectedCameraDeviceID
+                        let trackingName: String = {
+                            if !appState.actualTrackingCameraInfo.isEmpty {
+                                return appState.actualTrackingCameraInfo
+                            }
+                            return Self.trackingCameraName(id: appState.selectedCameraDeviceID)
+                        }()
+                        // Mismatch when feed camera name doesn't appear anywhere in tracking info
+                        let mismatch = !feedName.isEmpty && !trackingName.lowercased().contains(feedName.lowercased())
+                        VStack(alignment: .trailing, spacing: 2) {
+                            HStack(spacing: 4) {
+                                Text("Feed:").foregroundStyle(.secondary)
+                                Text(feedName.isEmpty ? "none" : feedName)
+                                    .foregroundStyle(mismatch ? .orange : .green)
+                            }
+                            HStack(spacing: 4) {
+                                Text("Tracking:").foregroundStyle(.secondary)
+                                Text(trackingName)
+                                    .foregroundStyle(mismatch ? .orange : .white)
+                            }
+                            if mismatch {
+                                Text("MISMATCH ⚠️")
+                                    .foregroundStyle(.orange)
+                                    .fontWeight(.bold)
+                            }
+                        }
+                        .font(.system(size: 10, design: .monospaced))
+                        .padding(5)
+                        .background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 4))
+                        .padding(.trailing, 8)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    }
                 }
             }
             .frame(minWidth: 320, minHeight: 240)
@@ -121,18 +168,84 @@ struct CameraPreviewView: View {
             // Toggle controls bar
             HStack(spacing: 12) {
                 Toggle(isOn: $appState.showCameraEyeVisualization) {
-                    Label("Eye", systemImage: "eye")
+                    Label("Gaze", systemImage: "eye")
                         .font(.system(size: 12, weight: .medium))
                 }
                 .toggleStyle(.button)
                 .controlSize(.small)
 
-                Toggle(isOn: $appState.showCameraDebugOverlay) {
-                    Label("Debug", systemImage: "chart.bar.doc.horizontal")
+                // Voice: start/stop voice backend directly, same as menu bar "Start Voice"
+                Button {
+                    if coordinator.activeVoiceBackend.isRunning {
+                        coordinator.stopVoice()
+                    } else {
+                        Task { await coordinator.startVoice() }
+                    }
+                } label: {
+                    Label("Voice", systemImage: appState.isVoiceActive ? "mic.fill" : "mic.slash")
+                        .font(.system(size: 12, weight: .medium))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Toggle voice transcription on/off")
+
+                // Overlay: toggles both the main display overlay and the camera debug view
+                Toggle(isOn: $appState.overlayAndFocusEnabled) {
+                    Label("Overlay", systemImage: appState.overlayAndFocusEnabled ? "square.grid.2x2.fill" : "square.grid.2x2")
                         .font(.system(size: 12, weight: .medium))
                 }
                 .toggleStyle(.button)
                 .controlSize(.small)
+                .help("Toggle main display overlay and camera debug view")
+                .onChange(of: appState.overlayAndFocusEnabled) { _, newValue in
+                    appState.showCameraDebugOverlay = newValue
+                }
+
+                let videoDevices: [AVCaptureDevice] = {
+                    let types: [AVCaptureDevice.DeviceType]
+                    if #available(macOS 14.0, *) {
+                        types = [.external, .builtInWideAngleCamera]
+                    } else {
+                        types = [.externalUnknown, .builtInWideAngleCamera]
+                    }
+                    return AVCaptureDevice.DiscoverySession(
+                        deviceTypes: types,
+                        mediaType: .video,
+                        position: .unspecified
+                    ).devices
+                }()
+
+                // Preview feed picker — swaps the camera in this window only
+                Menu {
+                    ForEach(videoDevices, id: \.uniqueID) { device in
+                        Button(device.localizedName) {
+                            coordinator.switchPreviewCamera(uniqueID: device.uniqueID)
+                        }
+                    }
+                } label: {
+                    Image(systemName: "camera")
+                        .font(.system(size: 12, weight: .medium))
+                }
+                .menuStyle(.button)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Switch preview feed camera (this window only)")
+
+                // Tracking camera picker — changes which camera eye tracking uses
+                Menu {
+                    ForEach(videoDevices, id: \.uniqueID) { device in
+                        Button(device.localizedName) {
+                            coordinator.selectTrackingCamera(uniqueID: device.uniqueID)
+                        }
+                    }
+                } label: {
+                    Image(systemName: "dot.scope")
+                        .font(.system(size: 12, weight: .medium))
+                }
+                .menuStyle(.button)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Switch tracking camera (restarts eye tracking)")
 
                 Spacer()
             }
@@ -351,7 +464,11 @@ private struct CameraPreviewRepresentable: NSViewRepresentable {
         return view
     }
 
-    func updateNSView(_ nsView: CameraPreviewNSView, context: Context) {}
+    func updateNSView(_ nsView: CameraPreviewNSView, context: Context) {
+        if nsView.previewLayer.session !== captureSession {
+            nsView.previewLayer.session = captureSession
+        }
+    }
 }
 
 private final class CameraPreviewNSView: NSView {

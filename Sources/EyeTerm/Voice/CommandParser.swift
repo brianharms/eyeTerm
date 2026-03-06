@@ -7,7 +7,8 @@ enum ParsedCommand: Equatable {
 
 final class CommandParser {
     var enableNormalization: Bool = true
-    var executeKeyword: String = "run it"
+    /// User-configurable execute keyword. "execute" is always-on regardless of this setting.
+    var executeKeyword: String = "execute"
 
     /// Regex that matches text inside square brackets, parentheses, or WhisperKit angle-bracket tokens (e.g. [inaudible], (silence), <|startoftranscript|>).
     private static let bracketedPattern = try! NSRegularExpression(pattern: "\\[.*?\\]|\\(.*?\\)|<\\|.*?\\|>", options: [])
@@ -72,15 +73,24 @@ final class CommandParser {
     func parse(_ transcription: String) -> [ParsedCommand] {
         let cleaned = stripBracketedText(transcription)
         guard !cleaned.isEmpty else { return [] }
-        let words = executeKeyword
+
+        // Build alternation regex from all execute triggers.
+        // "execute" is always-on; the configurable keyword is added if different.
+        var patterns: [String] = ["execute"]
+        let customWords = executeKeyword
             .trimmingCharacters(in: .whitespaces)
             .components(separatedBy: .whitespaces)
             .filter { !$0.isEmpty }
-            .map { NSRegularExpression.escapedPattern(for: $0) }
+        if !customWords.isEmpty {
+            let customJoined = customWords.joined(separator: " ").lowercased()
+            if customJoined != "execute" {
+                let p = customWords.map { NSRegularExpression.escapedPattern(for: $0) }.joined(separator: "\\s+")
+                patterns.append(p)
+            }
+        }
 
-        let pattern = words.joined(separator: "\\s+")
-        guard !pattern.isEmpty,
-              let regex = try? NSRegularExpression(pattern: "\\b\(pattern)\\b", options: .caseInsensitive) else {
+        let patternStr = "\\b(?:" + patterns.joined(separator: "|") + ")\\b"
+        guard let regex = try? NSRegularExpression(pattern: patternStr, options: .caseInsensitive) else {
             return processText(cleaned)
         }
 

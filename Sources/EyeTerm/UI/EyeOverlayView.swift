@@ -27,25 +27,18 @@ private struct SubtleOverlayContent: View {
     let size: CGSize
     @Environment(AppState.self) private var appState
 
-    private var displaySlots: [TerminalSlot] {
-        guard appState.terminalSlots.isEmpty else { return appState.terminalSlots }
-        return (0..<4).map { i in
-            TerminalSlot(id: i,
-                         normalizedRect: CGRect(x: CGFloat(i % 2) * 0.5, y: CGFloat(i / 2) * 0.5, width: 0.5, height: 0.5),
-                         label: "Slot \(i + 1)")
-        }
-    }
-
     var body: some View {
         let smoothX = appState.smoothedEyePoint.x * size.width
         let smoothY = appState.smoothedEyePoint.y * size.height
 
-        Circle()
-            .fill(.blue.opacity(appState.subtleEyeOpacity))
-            .frame(width: appState.subtleEyeSize, height: appState.subtleEyeSize)
-            .position(x: smoothX, y: smoothY)
+        if !appState.terminalSlots.isEmpty {
+            Circle()
+                .fill(.blue.opacity(appState.subtleEyeOpacity))
+                .frame(width: appState.subtleEyeSize, height: appState.subtleEyeSize)
+                .position(x: smoothX, y: smoothY)
+        }
 
-        ForEach(displaySlots) { slot in
+        ForEach(appState.terminalSlots) { slot in
             let isFocused = slot.id == appState.focusedSlot
             let isDwelling = slot.id == appState.dwellingSlot
             let progress = isDwelling ? appState.dwellProgress : 0
@@ -96,16 +89,6 @@ private struct DebugOverlayContent: View {
     let size: CGSize
     @Environment(AppState.self) private var appState
 
-    // Returns real slots, or 4 equal-quadrant placeholders when none are configured yet
-    private var displaySlots: [TerminalSlot] {
-        guard appState.terminalSlots.isEmpty else { return appState.terminalSlots }
-        return (0..<4).map { i in
-            TerminalSlot(id: i,
-                         normalizedRect: CGRect(x: CGFloat(i % 2) * 0.5, y: CGFloat(i / 2) * 0.5, width: 0.5, height: 0.5),
-                         label: "Slot \(i + 1)")
-        }
-    }
-
     var body: some View {
         let midX = size.width / 2
         let midY = size.height / 2
@@ -124,7 +107,7 @@ private struct DebugOverlayContent: View {
         let smoothY = appState.smoothedEyePoint.y * size.height
 
         // Slot fills — always rendered in debug mode regardless of showQuadrantHighlighting
-        ForEach(displaySlots) { slot in
+        ForEach(appState.terminalSlots) { slot in
             let rect = slotRect(slot, size: size)
             let isActive = slot.id == appState.activeSlot
             let isFocused = slot.id == appState.focusedSlot
@@ -182,20 +165,25 @@ private struct DebugOverlayContent: View {
                 }
             }
 
-        // Quadrant grid lines (dashed)
-        Path { path in
-            path.move(to: CGPoint(x: midX, y: 0))
-            path.addLine(to: CGPoint(x: midX, y: size.height))
-        }
-        .stroke(style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
-        .foregroundStyle(.white.opacity(0.2))
+        // Quadrant grid lines (dashed) — only when tracking is active and terminals are adopted
+        if appState.isEyeTrackingActive && !appState.terminalSlots.isEmpty {
+            Path { path in
+                path.move(to: CGPoint(x: midX, y: 0))
+                path.addLine(to: CGPoint(x: midX, y: size.height))
+            }
+            .stroke(style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
+            .foregroundStyle(.white.opacity(0.2))
 
-        Path { path in
-            path.move(to: CGPoint(x: 0, y: midY))
-            path.addLine(to: CGPoint(x: size.width, y: midY))
+            Path { path in
+                path.move(to: CGPoint(x: 0, y: midY))
+                path.addLine(to: CGPoint(x: size.width, y: midY))
+            }
+            .stroke(style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
+            .foregroundStyle(.white.opacity(0.2))
         }
-        .stroke(style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
-        .foregroundStyle(.white.opacity(0.2))
+
+        // Gaze-point visuals — only when tracking is active and terminals are adopted
+        if appState.isEyeTrackingActive && !appState.terminalSlots.isEmpty {
 
         let hw = appState.headWeight
 
@@ -295,6 +283,8 @@ private struct DebugOverlayContent: View {
                 .scaleEffect(appState.overlayIconSize)
                 .position(x: smoothX, y: smoothY)
         }
+
+        } // end isEyeTrackingActive
 
         // HUD panel
         VStack(alignment: .leading, spacing: 3) {
@@ -407,6 +397,24 @@ private struct SharedOverlayContent: View {
                 .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 10))
                 .position(x: focusedRect.midX, y: focusedRect.minY + 75)
                 .animation(.easeOut(duration: 0.8), value: winkText)
+        }
+
+        // Gaze lock indicator — shown only when blockInteractionDuringSetup is on and setup is running
+        if appState.blockInteractionDuringSetup && appState.gazeActivationLocked {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(Color.orange)
+                    .frame(width: 8, height: 8)
+                    .opacity(0.9)
+                Text("Focus disabled — setting up terminals")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+            .background(.black.opacity(0.6), in: Capsule())
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            .padding(.bottom, 20)
         }
 
         // Command flash visualization

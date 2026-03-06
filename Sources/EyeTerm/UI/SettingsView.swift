@@ -376,6 +376,10 @@ struct SettingsView: View {
                     Toggle("Active / Loading State", isOn: $state.showActiveState)
                 }
 
+                described("When on, the overlay stays above all windows including terminals. Turn off to let terminal windows appear on top of the overlay.") {
+                    Toggle("Keep Overlay on Top", isOn: $state.keepOverlayOnTop)
+                }
+
                 described("Adds a dark grey screen backdrop behind the debug overlay — makes gaze dots easier to see.") {
                     Toggle("Dark Backdrop", isOn: $state.showDebugBackdrop)
                         .disabled(state.overlayMode == .off)
@@ -856,6 +860,11 @@ struct SettingsView: View {
 
                     Toggle("Rename windows to project name", isOn: $state.renameWindowsToProjectName)
                         .onChange(of: state.renameWindowsToProjectName) { _, _ in appState.persistSettings() }
+                }
+
+                described("When on, voice transcription and gaze focusing are disabled while terminals are launching. Useful if you don't want accidental input during Claude startup.") {
+                    Toggle("Block interaction during terminal setup", isOn: $state.blockInteractionDuringSetup)
+                        .onChange(of: state.blockInteractionDuringSetup) { _, _ in appState.persistSettings() }
                 }
 
                 Button {

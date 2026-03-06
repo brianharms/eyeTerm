@@ -11,8 +11,9 @@ final class MediaPipeBackend: EyeTrackingBackend {
     var onDiagnostics: ((EyeTermDiagnostics) -> Void)?
     var onFaceObservation: ((FaceObservationData?) -> Void)?
     var onError: ((String) -> Void)?
-    /// Fires once when the Python process reports it has started, with (cameraIndex, cameraName).
-    var onStarted: ((Int, String) -> Void)?
+    /// Fires once when the Python process reports it has started, with (cameraIndex, cameraName, cameraUID).
+    /// cameraUID is the AVFoundation uniqueID of the device OpenCV actually opened (empty if unavailable).
+    var onStarted: ((Int, String, String) -> Void)?
 
     var smoothingAlpha: Double {
         get { emaFilter.alpha }
@@ -220,17 +221,22 @@ final class MediaPipeBackend: EyeTrackingBackend {
     }
 
     /// Called once Python reports back which camera it actually opened.
-    /// Uses camera name for device lookup (more reliable than index — Python and Swift may use
-    /// different enumeration orderings). Falls back to index-based lookup if name is empty.
-    func syncPreviewToTrackingCamera(cameraName: String, opencvIndex: Int, onReady: (() -> Void)? = nil) {
-        // Find device by name — avoids index mismatch between Python's and Swift's enumeration order.
+    /// Priority: uniqueID (unambiguous) → name match → index fallback.
+    /// The uniqueID is verified post-open by Python via the same deprecated API OpenCV uses,
+    /// so it reliably identifies the physical device regardless of enumeration order.
+    func syncPreviewToTrackingCamera(cameraName: String, opencvIndex: Int, verifiedUID: String = "", onReady: (() -> Void)? = nil) {
         var target: AVCaptureDevice?
-        if !cameraName.isEmpty {
+        // 1. UID lookup — unambiguous, no name-matching needed.
+        if !verifiedUID.isEmpty {
+            target = AVCaptureDevice(uniqueID: verifiedUID)
+        }
+        // 2. Name match — fallback when PyObjC unavailable so UID is empty.
+        if target == nil, !cameraName.isEmpty {
             let all = orderedVideoDevices() + opencvOrderedDevices()
             target = all.first(where: { $0.localizedName == cameraName })
                 ?? all.first(where: { $0.localizedName.localizedCaseInsensitiveContains(cameraName) })
         }
-        // Fall back to index-based lookup.
+        // 3. Index fallback — last resort.
         if target == nil {
             let devices = opencvOrderedDevices()
             guard opencvIndex < devices.count else { return }
@@ -328,10 +334,11 @@ final class MediaPipeBackend: EyeTrackingBackend {
             if status == "started" {
                 let idx = json["camera_index"] as? Int ?? -1
                 let name = json["camera_name"] as? String ?? ""
+                let uid = json["camera_uid"] as? String ?? ""
                 DispatchQueue.main.async { [weak self] in
                     self?.actualTrackingCameraIndex = idx
                     self?.actualTrackingCameraName = name
-                    self?.onStarted?(idx, name)
+                    self?.onStarted?(idx, name, uid)
                 }
             } else if status == "camera_diag" {
                 // Diagnostic only — don't surface to UI. AVFoundation not available in mediapipe

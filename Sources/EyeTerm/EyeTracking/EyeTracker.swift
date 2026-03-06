@@ -89,7 +89,9 @@ final class EyeTermTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
         set { estimator.headAmplification = newValue }
     }
 
-    var selectedCameraDeviceID: String = ""  // empty = system default
+    /// Directly-resolved camera device set by AppCoordinator via DiscoverySession lookup.
+    /// When nil, start() falls back to the built-in front camera only (no external fallback).
+    var selectedCaptureDevice: AVCaptureDevice?
 
     private(set) var isRunning = false
 
@@ -119,16 +121,20 @@ final class EyeTermTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
     func start() throws {
         guard !isRunning else { return }
 
-        let camera: AVCaptureDevice? = {
-            if !selectedCameraDeviceID.isEmpty,
-               let device = AVCaptureDevice(uniqueID: selectedCameraDeviceID) {
-                return device
+        // Use the coordinator-resolved device object.
+        // If none was provided, find the built-in front camera — deliberately NO fallback to
+        // AVCaptureDevice.default(for:) which would silently pick an external camera (e.g. Logitech).
+        let camera: AVCaptureDevice
+        if let preset = selectedCaptureDevice {
+            camera = preset
+        } else {
+            guard let builtin =
+                AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
+                ?? AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .unspecified)
+            else {
+                throw EyeTermTrackerError.cameraNotAvailable
             }
-            return AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
-                ?? AVCaptureDevice.default(for: .video)
-        }()
-        guard let camera else {
-            throw EyeTermTrackerError.cameraNotAvailable
+            camera = builtin
         }
 
         let input: AVCaptureDeviceInput

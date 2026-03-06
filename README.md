@@ -1,5 +1,7 @@
 # eyeTerm
 
+> **Experimental software. This project is a personal research prototype — it is unstable, under active development, and likely has bugs. Use at your own risk.**
+
 **Control your terminal with your eyes and voice.** eyeTerm is a macOS menu bar app that lets you look at one of four terminal quadrants to focus it, then speak commands that get transcribed and sent — hands-free.
 
 Built for developers who want to work with AI coding agents (like Claude Code) without reaching for the keyboard.
@@ -175,4 +177,4 @@ Calibration uses a 9-point affine transform fit (separate transforms for head an
 
 ## License
 
-Private — Brian Harms
+MIT — [Ritual.Industries](https://ritual.industries)

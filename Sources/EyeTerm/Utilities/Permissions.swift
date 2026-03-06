@@ -1,6 +1,7 @@
 import AVFoundation
 import AppKit
 import Speech
+import ApplicationServices
 
 enum PermissionStatus: String {
     case granted
@@ -78,6 +79,51 @@ struct Permissions {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_SpeechRecognition") {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    static func openAccessibilitySettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    static func openAutomationSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    // typeApplicationBundleID = 'bund' = 0x62756E64
+    // typeWildCard             = '****' = 0x2A2A2A2A
+    static func checkAutomation(bundleID: String) -> PermissionStatus {
+        var targetDesc = AEDesc()
+        guard let data = bundleID.data(using: .utf8) else { return .notDetermined }
+        let created = data.withUnsafeBytes { buf in
+            AECreateDesc(OSType(0x62756E64), buf.baseAddress, buf.count, &targetDesc)
+        }
+        guard created == noErr else { return .notDetermined }
+        defer { AEDisposeDesc(&targetDesc) }
+        let status = AEDeterminePermissionToAutomateTarget(
+            &targetDesc, OSType(0x2A2A2A2A), OSType(0x2A2A2A2A), false
+        )
+        switch status {
+        case noErr:           return .granted
+        case OSStatus(-1743): return .denied   // errAEEventNotPermitted
+        default:              return .notDetermined
+        }
+    }
+
+    static func requestAutomation(bundleID: String) {
+        var targetDesc = AEDesc()
+        guard let data = bundleID.data(using: .utf8) else { return }
+        let created = data.withUnsafeBytes { buf in
+            AECreateDesc(OSType(0x62756E64), buf.baseAddress, buf.count, &targetDesc)
+        }
+        guard created == noErr else { return }
+        defer { AEDisposeDesc(&targetDesc) }
+        _ = AEDeterminePermissionToAutomateTarget(
+            &targetDesc, OSType(0x2A2A2A2A), OSType(0x2A2A2A2A), true
+        )
     }
 
     static func requestAllPermissions() async -> (camera: Bool, microphone: Bool) {

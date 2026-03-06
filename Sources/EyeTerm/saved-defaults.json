@@ -5,7 +5,7 @@
   "debugSmoothing" : 0.10000000000000001,
   "dwellTimeThreshold" : 0.5,
   "enableTextNormalization" : true,
-  "executeKeyword" : "run it",
+  "executeKeyword" : "execute",
   "eyeSmoothing" : 0.10000000000000001,
   "fusionDotSize" : 16,
   "headAmplification" : 4.5,

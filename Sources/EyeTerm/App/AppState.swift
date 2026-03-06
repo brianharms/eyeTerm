@@ -39,6 +39,20 @@ final class AppState {
     // MARK: - Dwell Progress
     var dwellProgress: Double = 0
 
+    // MARK: - Gaze Lock
+    /// When true, gaze dwell cannot focus terminals (e.g. during terminal setup).
+    var gazeActivationLocked: Bool = false
+
+    // MARK: - Quick Toggles (Camera Preview toolbar)
+    /// Quick-toggle for voice transcription without opening Settings.
+    var isVoiceEnabled: Bool = true
+    /// When false, hides the overlay and blocks gaze-based terminal focusing.
+    var overlayAndFocusEnabled: Bool = true
+
+    // MARK: - Setup Behavior
+    /// When true, voice and gaze focusing are disabled while terminals are launching.
+    var blockInteractionDuringSetup: Bool = false
+
     // MARK: - Settings
     var trackingBackend: TrackingBackend = .mediaPipe
     var voiceBackend: VoiceBackend = .sfSpeech
@@ -46,7 +60,7 @@ final class AppState {
     var hysteresisDelay: TimeInterval = 0.3
     var whisperModel: String = "small.en"
     var enableTextNormalization = true
-    var executeKeyword: String = "run it"
+    var executeKeyword: String = "execute"
     var eyeSmoothing: Double = 0.3
     var headWeight: Double = 0.85
     var headPitchSensitivity: Double = 0.6
@@ -59,7 +73,11 @@ final class AppState {
     var selectedMicDeviceUID: String = ""   // empty = system default
     var availableMics: [(uid: String, name: String)] = []
     var selectedCameraDeviceID: String = ""  // empty = system default
+    /// Set by AppCoordinator once the MediaPipe Python process reports back which camera it opened.
+    var actualTrackingCameraInfo: String = ""  // e.g. "MacBook Pro Camera (index 0)"
     var availableCameras: [(uid: String, name: String)] = []
+    /// The live AVCaptureSession feeding the camera preview window. Set by AppCoordinator.
+    var currentPreviewSession: AVCaptureSession? = nil
     var selectedDisplayID: CGDirectDisplayID = CGMainDisplayID()
     var availableDisplays: [(id: CGDirectDisplayID, name: String)] = []
     var overlayIconSize: Double = 1.0
@@ -75,6 +93,7 @@ final class AppState {
     var subtleEyeOpacity: Double = 0.25
     var quadrantBorderWidth: Double = 2.0
     var showDebugBackdrop: Bool = false
+    var keepOverlayOnTop: Bool = true
     var showDictationDisplay: Bool = false
     var showWinkOverlay: Bool = false
     var showCommandFlash: Bool = false
@@ -278,6 +297,9 @@ final class AppState {
             "winkDipThreshold": winkDipThreshold,
             "selectedCameraDeviceID": selectedCameraDeviceID,
             "winkProfiles": winkProfiles.mapValues { $0.asDictionary() },
+            "isVoiceEnabled": isVoiceEnabled,
+            "overlayAndFocusEnabled": overlayAndFocusEnabled,
+            "blockInteractionDuringSetup": blockInteractionDuringSetup,
         ]
 
         guard let data = try? JSONSerialization.data(withJSONObject: settings, options: [.prettyPrinted, .sortedKeys]) else { return }
@@ -353,6 +375,9 @@ final class AppState {
             "renameWindowsToProjectName": renameWindowsToProjectName,
             "selectedCameraDeviceID": selectedCameraDeviceID,
             "winkProfiles": winkProfiles.mapValues { $0.asDictionary() },
+            "isVoiceEnabled": isVoiceEnabled,
+            "overlayAndFocusEnabled": overlayAndFocusEnabled,
+            "blockInteractionDuringSetup": blockInteractionDuringSetup,
         ]
         // Include calibration transforms from UserDefaults so they survive reinstalls.
         var mutable = settings
@@ -419,6 +444,9 @@ final class AppState {
         if let v = dict["claudeInitialPrompt"] as? String { claudeInitialPrompt = v }
         if let v = dict["claudeInitialPromptStagger"] as? Double { claudeInitialPromptStagger = v }
         if let v = dict["renameWindowsToProjectName"] as? Bool { renameWindowsToProjectName = v }
+        if let v = dict["isVoiceEnabled"] as? Bool { isVoiceEnabled = v }
+        if let v = dict["overlayAndFocusEnabled"] as? Bool { overlayAndFocusEnabled = v }
+        if let v = dict["blockInteractionDuringSetup"] as? Bool { blockInteractionDuringSetup = v }
         if let rawProfiles = dict["winkProfiles"] as? [String: [String: Double]] {
             var loaded: [String: WinkProfile] = [:]
             for (uid, profileDict) in rawProfiles {

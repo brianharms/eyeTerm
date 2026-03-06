@@ -11,6 +11,7 @@ Run with -u flag for unbuffered output.
 import sys
 import json
 import math
+import argparse
 import cv2
 import numpy as np
 import mediapipe as mp
@@ -113,7 +114,98 @@ def emit(obj):
     print(json.dumps(obj), flush=True)
 
 
+def enumerate_cameras_deprecated():
+    """Enumerate via AVCaptureDevice.devicesWithMediaType: (deprecated API, matches older OpenCV)."""
+    import AVFoundation
+    return list(AVFoundation.AVCaptureDevice.devicesWithMediaType_(AVFoundation.AVMediaTypeVideo))
+
+
+def enumerate_cameras_discovery():
+    """Enumerate via AVCaptureDeviceDiscoverySession (matches OpenCV 4.7+)."""
+    import AVFoundation
+    try:
+        ext_type = AVFoundation.AVCaptureDeviceTypeExternal
+    except AttributeError:
+        ext_type = AVFoundation.AVCaptureDeviceTypeExternalUnknown
+    session = AVFoundation.AVCaptureDeviceDiscoverySession.\
+        discoverySessionWithDeviceTypes_mediaType_position_(
+            [AVFoundation.AVCaptureDeviceTypeBuiltInWideAngleCamera, ext_type],
+            AVFoundation.AVMediaTypeVideo,
+            AVFoundation.AVCaptureDevicePositionUnspecified,
+        )
+    return list(session.devices())
+
+
+def find_camera_index(uid, name, fallback):
+    """
+    Resolve the OpenCV VideoCapture index for the desired camera.
+
+    Tries the deprecated AVFoundation API first (matches OpenCV < 4.7),
+    then DiscoverySession (matches OpenCV 4.7+). Emits a diagnostic on stderr
+    showing both orderings so mismatches can be debugged.
+
+    Matching priority:
+      1. Exact uniqueID match  (unambiguous, platform-stable)
+      2. Name substring match  (fallback when UID is stale)
+      3. `fallback` index      (last resort)
+    """
+    def search(devices, uid, name):
+        if uid:
+            for i, d in enumerate(devices):
+                if d.uniqueID() == uid:
+                    return i, d.localizedName()
+        if name:
+            nl = name.lower()
+            for i, d in enumerate(devices):
+                if nl in d.localizedName().lower():
+                    return i, d.localizedName()
+        return None, None
+
+    try:
+        import AVFoundation
+
+        dep_devices = enumerate_cameras_deprecated()
+        disc_devices = enumerate_cameras_discovery()
+
+        dep_names  = [d.localizedName() for d in dep_devices]
+        disc_names = [d.localizedName() for d in disc_devices]
+
+        # Emit diagnostic so the overlay can show which API found what
+        emit({"status": "camera_diag",
+              "deprecated_order": dep_names,
+              "discovery_order": disc_names,
+              "uid": uid, "name": name, "fallback": fallback})
+
+        # Try deprecated API first (most OpenCV builds use this)
+        idx, found_name = search(dep_devices, uid, name)
+        if idx is not None:
+            return idx, found_name
+
+        # Try DiscoverySession (OpenCV 4.7+)
+        idx, found_name = search(disc_devices, uid, name)
+        if idx is not None:
+            return idx, found_name
+
+        return fallback, name
+
+    except Exception as e:
+        emit({"status": "camera_diag", "error": str(e), "fallback": fallback})
+        return fallback, name
+
+
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--camera", type=int, default=0, help="OpenCV camera index (fallback)")
+    parser.add_argument("--camera-name", type=str, default="", help="Camera device name")
+    parser.add_argument("--camera-uid", type=str, default="", help="AVFoundation camera uniqueID")
+    args = parser.parse_args()
+
+    camera_index, camera_name = find_camera_index(
+        uid=args.camera_uid,
+        name=args.camera_name,
+        fallback=args.camera,
+    )
+
     mp_face_mesh = mp.solutions.face_mesh
     face_mesh = mp_face_mesh.FaceMesh(
         max_num_faces=1,
@@ -122,7 +214,7 @@ def main():
         min_tracking_confidence=0.6,
     )
 
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(camera_index)
     if not cap.isOpened():
         emit({"error": "Cannot open camera"})
         sys.exit(1)
@@ -131,7 +223,20 @@ def main():
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
     cap.set(cv2.CAP_PROP_FPS, 30)
 
-    emit({"status": "started"})
+    # Post-open verification: re-enumerate via the same deprecated API OpenCV uses and emit
+    # the uniqueID of the device at camera_index. Swift uses this for an unambiguous UID lookup
+    # instead of fuzzy name matching, eliminating preview/tracking camera desync.
+    verified_uid = ""
+    try:
+        dep_devices = enumerate_cameras_deprecated()
+        if camera_index < len(dep_devices):
+            d = dep_devices[camera_index]
+            verified_uid = d.uniqueID()
+            camera_name = d.localizedName()
+    except Exception:
+        pass
+
+    emit({"status": "started", "camera_index": camera_index, "camera_name": camera_name, "camera_uid": verified_uid})
 
     try:
         while True:
