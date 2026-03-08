@@ -166,7 +166,8 @@ private struct DebugOverlayContent: View {
             }
 
         // Quadrant grid lines (dashed) — only when tracking is active and terminals are adopted
-        if appState.isEyeTrackingActive && !appState.terminalSlots.isEmpty {
+        if appState.isEyeTrackingActive && !appState.terminalSlots.isEmpty &&
+           appState.showQuadrantHighlighting {
             Path { path in
                 path.move(to: CGPoint(x: midX, y: 0))
                 path.addLine(to: CGPoint(x: midX, y: size.height))
@@ -182,8 +183,8 @@ private struct DebugOverlayContent: View {
             .foregroundStyle(.white.opacity(0.2))
         }
 
-        // Gaze-point visuals — only when tracking is active and terminals are adopted
-        if appState.isEyeTrackingActive && !appState.terminalSlots.isEmpty {
+        // Gaze-point visuals — shown whenever tracking is active (terminals not required)
+        if appState.isEyeTrackingActive {
 
         let hw = appState.headWeight
 
@@ -371,6 +372,8 @@ private struct SharedOverlayContent: View {
                         .font(.system(size: 28, weight: .bold))
                         .foregroundStyle(.white)
                         .multilineTextAlignment(.center)
+                        .lineLimit(3)
+                        .truncationMode(.head)
                         .frame(maxWidth: rect.width - 80)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 12)

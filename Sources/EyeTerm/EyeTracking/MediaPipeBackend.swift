@@ -174,6 +174,40 @@ final class MediaPipeBackend: EyeTrackingBackend {
         actualTrackingCameraIndex = -1
     }
 
+    /// Like stop(), but waits on a background thread for the Python process to fully exit
+    /// before calling completion on the main thread. This ensures the camera device is released
+    /// before the next process tries to open it — critical for reliable camera switching.
+    func stopAndWait(completion: @escaping () -> Void) {
+        guard isRunning else {
+            DispatchQueue.main.async { completion() }
+            return
+        }
+        let dyingProcess = process
+        process?.terminationHandler = nil
+        process?.terminate()
+        process = nil
+        stdoutPipe = nil
+        isRunning = false
+        emaFilter.reset()
+        teardownPreviewSession()
+        actualTrackingCameraName = ""
+        actualTrackingCameraIndex = -1
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            // Poll up to 1.5s for a clean SIGTERM exit
+            let deadline = Date().addingTimeInterval(1.5)
+            while dyingProcess?.isRunning == true, Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.05)
+            }
+            // Second SIGTERM if still alive after timeout
+            if dyingProcess?.isRunning == true {
+                dyingProcess?.terminate()
+                Thread.sleep(forTimeInterval: 0.3)
+            }
+            DispatchQueue.main.async { completion() }
+        }
+    }
+
     // MARK: - Preview Session
 
     private func setupPreviewSession() throws {
@@ -221,22 +255,27 @@ final class MediaPipeBackend: EyeTrackingBackend {
     }
 
     /// Called once Python reports back which camera it actually opened.
-    /// Priority: uniqueID (unambiguous) → name match → index fallback.
-    /// The uniqueID is verified post-open by Python via the same deprecated API OpenCV uses,
-    /// so it reliably identifies the physical device regardless of enumeration order.
+    /// Name is the authoritative signal — a UID from Python's post-open check
+    /// can be wrong when the AVFoundation deprecated-API index doesn't align with
+    /// OpenCV's internal ordering. We only accept a UID if the device name also matches.
     func syncPreviewToTrackingCamera(cameraName: String, opencvIndex: Int, verifiedUID: String = "", onReady: (() -> Void)? = nil) {
         var target: AVCaptureDevice?
-        // 1. UID lookup — unambiguous, no name-matching needed.
-        if !verifiedUID.isEmpty {
-            target = AVCaptureDevice(uniqueID: verifiedUID)
+        // 1. UID lookup — accepted only when name also confirms it's the right device.
+        if !verifiedUID.isEmpty, let byUID = AVCaptureDevice(uniqueID: verifiedUID) {
+            if cameraName.isEmpty
+                || byUID.localizedName == cameraName
+                || byUID.localizedName.localizedCaseInsensitiveContains(cameraName) {
+                target = byUID
+            }
+            // If name doesn't match, the UID is stale/wrong — fall through to name match.
         }
-        // 2. Name match — fallback when PyObjC unavailable so UID is empty.
+        // 2. Name match — authoritative. Searches both AVFoundation orderings.
         if target == nil, !cameraName.isEmpty {
             let all = orderedVideoDevices() + opencvOrderedDevices()
             target = all.first(where: { $0.localizedName == cameraName })
                 ?? all.first(where: { $0.localizedName.localizedCaseInsensitiveContains(cameraName) })
         }
-        // 3. Index fallback — last resort.
+        // 3. Index fallback — last resort when name is empty.
         if target == nil {
             let devices = opencvOrderedDevices()
             guard opencvIndex < devices.count else { return }
@@ -255,9 +294,31 @@ final class MediaPipeBackend: EyeTrackingBackend {
         previewSession = session
     }
 
+    /// Forces the preview session to the camera matching `name`, regardless of UID or index.
+    /// Used as a verification pass after syncPreviewToTrackingCamera to catch any mismatch.
+    func syncPreviewByName(_ name: String, onReady: (() -> Void)? = nil) {
+        guard !name.isEmpty else { return }
+        let all = orderedVideoDevices() + opencvOrderedDevices()
+        guard let target = all.first(where: { $0.localizedName == name })
+                        ?? all.first(where: { $0.localizedName.localizedCaseInsensitiveContains(name) })
+        else { return }
+
+        if let input = previewSession?.inputs.first as? AVCaptureDeviceInput,
+           input.device.uniqueID == target.uniqueID {
+            onReady?()
+            return
+        }
+        teardownPreviewSession()
+        guard let session = makePreviewSession(for: target, onReady: onReady) else { return }
+        previewSession = session
+    }
+
     /// Returns video capture devices in OpenCV's enumeration order (external cameras first).
-    /// OpenCV 4.x AVFoundation backend lists external cameras before built-in —
-    /// the opposite of the standard builtIn-first DiscoverySession order.
+    /// OpenCV 4.x AVFoundation backend lists external cameras before built-in.
+    ///
+    /// IMPORTANT: macOS ignores the device type order in the DiscoverySession input array —
+    /// it always returns built-in cameras first regardless of what order you request.
+    /// We must manually sort the results to put external cameras first.
     private func opencvOrderedDevices() -> [AVCaptureDevice] {
         let types: [AVCaptureDevice.DeviceType]
         if #available(macOS 14.0, *) {
@@ -265,11 +326,21 @@ final class MediaPipeBackend: EyeTrackingBackend {
         } else {
             types = [.externalUnknown, .builtInWideAngleCamera]
         }
-        return AVCaptureDevice.DiscoverySession(
+        let devices = AVCaptureDevice.DiscoverySession(
             deviceTypes: types,
             mediaType: .video,
             position: .unspecified
         ).devices
+        // macOS returns built-in first regardless of type array order — manually re-sort.
+        if #available(macOS 14.0, *) {
+            let ext = devices.filter { $0.deviceType == .external }
+            let builtin = devices.filter { $0.deviceType != .external }
+            return ext + builtin
+        } else {
+            let ext = devices.filter { $0.deviceType == .externalUnknown }
+            let builtin = devices.filter { $0.deviceType != .externalUnknown }
+            return ext + builtin
+        }
     }
 
     /// Returns video capture devices in builtIn-first order (standard AVFoundation order).

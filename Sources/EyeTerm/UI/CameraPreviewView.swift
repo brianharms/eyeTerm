@@ -5,15 +5,7 @@ import CoreMedia
 struct CameraPreviewView: View {
     @Environment(AppState.self) private var appState
     @Environment(AppCoordinator.self) private var coordinator
-
-    private static func feedCameraName(from session: AVCaptureSession?) -> String {
-        (session?.inputs.first as? AVCaptureDeviceInput)?.device.localizedName ?? ""
-    }
-
-    private static func trackingCameraName(id: String) -> String {
-        guard !id.isEmpty else { return "system default" }
-        return AVCaptureDevice(uniqueID: id)?.localizedName ?? id
-    }
+    @Environment(\.openSettings) private var openSettings
 
     private static func cameraAspectRatio(from session: AVCaptureSession?) -> CGSize {
         guard let session,
@@ -125,41 +117,6 @@ struct CameraPreviewView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
                     }
 
-                    // Camera diagnostic (top-right) when debug overlay on
-                    if appState.showCameraDebugOverlay {
-                        let feedName = Self.feedCameraName(from: session)
-                        // Use actual Python-reported camera when available; fall back to selectedCameraDeviceID
-                        let trackingName: String = {
-                            if !appState.actualTrackingCameraInfo.isEmpty {
-                                return appState.actualTrackingCameraInfo
-                            }
-                            return Self.trackingCameraName(id: appState.selectedCameraDeviceID)
-                        }()
-                        // Mismatch when feed camera name doesn't appear anywhere in tracking info
-                        let mismatch = !feedName.isEmpty && !trackingName.lowercased().contains(feedName.lowercased())
-                        VStack(alignment: .trailing, spacing: 2) {
-                            HStack(spacing: 4) {
-                                Text("Feed:").foregroundStyle(.secondary)
-                                Text(feedName.isEmpty ? "none" : feedName)
-                                    .foregroundStyle(mismatch ? .orange : .green)
-                            }
-                            HStack(spacing: 4) {
-                                Text("Tracking:").foregroundStyle(.secondary)
-                                Text(trackingName)
-                                    .foregroundStyle(mismatch ? .orange : .white)
-                            }
-                            if mismatch {
-                                Text("MISMATCH ⚠️")
-                                    .foregroundStyle(.orange)
-                                    .fontWeight(.bold)
-                            }
-                        }
-                        .font(.system(size: 10, design: .monospaced))
-                        .padding(5)
-                        .background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 4))
-                        .padding(.trailing, 8)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                    }
                 }
             }
             .frame(minWidth: 320, minHeight: 240)
@@ -168,38 +125,39 @@ struct CameraPreviewView: View {
             // Toggle controls bar
             HStack(spacing: 12) {
                 Toggle(isOn: $appState.showCameraEyeVisualization) {
-                    Label("Gaze", systemImage: "eye")
+                    Image(systemName: "eye")
                         .font(.system(size: 12, weight: .medium))
                 }
                 .toggleStyle(.button)
                 .controlSize(.small)
+                .help("Toggle eye/face mesh visualization")
 
                 // Voice: start/stop voice backend directly, same as menu bar "Start Voice"
-                Button {
-                    if coordinator.activeVoiceBackend.isRunning {
-                        coordinator.stopVoice()
-                    } else {
-                        Task { await coordinator.startVoice() }
+                Toggle(isOn: Binding(
+                    get: { appState.isVoiceActive },
+                    set: { active in
+                        if active { Task { await coordinator.startVoice() } }
+                        else { coordinator.stopVoice() }
                     }
-                } label: {
-                    Label("Voice", systemImage: appState.isVoiceActive ? "mic.fill" : "mic.slash")
+                )) {
+                    Image(systemName: appState.isVoiceActive ? "mic.fill" : "mic.slash")
                         .font(.system(size: 12, weight: .medium))
                 }
-                .buttonStyle(.bordered)
+                .toggleStyle(.button)
                 .controlSize(.small)
                 .help("Toggle voice transcription on/off")
 
-                // Overlay: toggles both the main display overlay and the camera debug view
-                Toggle(isOn: $appState.overlayAndFocusEnabled) {
-                    Label("Overlay", systemImage: appState.overlayAndFocusEnabled ? "square.grid.2x2.fill" : "square.grid.2x2")
+                // Overlay: cycles overlayMode (subtle → debug → off)
+                Toggle(isOn: Binding(
+                    get: { appState.overlayMode != .off },
+                    set: { _ in coordinator.cycleOverlayMode() }
+                )) {
+                    Image(systemName: appState.overlayMode != .off ? "square.grid.2x2.fill" : "square.grid.2x2")
                         .font(.system(size: 12, weight: .medium))
                 }
                 .toggleStyle(.button)
                 .controlSize(.small)
-                .help("Toggle main display overlay and camera debug view")
-                .onChange(of: appState.overlayAndFocusEnabled) { _, newValue in
-                    appState.showCameraDebugOverlay = newValue
-                }
+                .help("Cycle overlay mode: subtle → debug → off")
 
                 let videoDevices: [AVCaptureDevice] = {
                     let types: [AVCaptureDevice.DeviceType]
@@ -215,11 +173,12 @@ struct CameraPreviewView: View {
                     ).devices
                 }()
 
-                // Preview feed picker — swaps the camera in this window only
+                // Camera picker — switches both preview feed and tracking camera together
                 Menu {
                     ForEach(videoDevices, id: \.uniqueID) { device in
                         Button(device.localizedName) {
                             coordinator.switchPreviewCamera(uniqueID: device.uniqueID)
+                            coordinator.selectTrackingCamera(uniqueID: device.uniqueID)
                         }
                     }
                 } label: {
@@ -229,29 +188,65 @@ struct CameraPreviewView: View {
                 .menuStyle(.button)
                 .buttonStyle(.bordered)
                 .controlSize(.small)
-                .help("Switch preview feed camera (this window only)")
+                .help("Switch camera (updates both preview and tracking)")
 
-                // Tracking camera picker — changes which camera eye tracking uses
+                // Calibration — gaze + wink calibration options
                 Menu {
-                    ForEach(videoDevices, id: \.uniqueID) { device in
-                        Button(device.localizedName) {
-                            coordinator.selectTrackingCamera(uniqueID: device.uniqueID)
-                        }
+                    Button {
+                        coordinator.startCalibration()
+                    } label: {
+                        Label("Calibrate Gaze", systemImage: "eye")
+                    }
+                    Divider()
+                    Button {
+                        coordinator.startWinkCalibration(eye: .left)
+                    } label: {
+                        Label("Calibrate Left Wink", systemImage: "eye.trianglebadge.exclamationmark")
+                    }
+                    Button {
+                        coordinator.startWinkCalibration(eye: .right)
+                    } label: {
+                        Label("Calibrate Right Wink", systemImage: "eye.trianglebadge.exclamationmark")
                     }
                 } label: {
-                    Image(systemName: "dot.scope")
+                    Image(systemName: "target")
                         .font(.system(size: 12, weight: .medium))
                 }
                 .menuStyle(.button)
                 .buttonStyle(.bordered)
                 .controlSize(.small)
-                .help("Switch tracking camera (restarts eye tracking)")
+                .help("Calibration options")
 
                 Spacer()
+
+                // Settings
+                Button {
+                    openSettings()
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 12, weight: .medium))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Open settings")
+
+                // Launch all
+                Button {
+                    Task { await coordinator.startAll() }
+                } label: {
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Start voice and launch terminals")
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(.ultraThickMaterial)
+        }
+        .onAppear {
+            coordinator.syncOverlayVisibility()
         }
     }
 }

@@ -54,7 +54,7 @@ Project uses XcodeGen (`project.yml`) but the `.xcodeproj` is already generated 
 | **Blink Gestures** | `Sources/EyeTerm/Utilities/BlinkGestureDetector.swift` | Detects deliberate one-eye winks for terminal actions (escape, enter). Filters blinks via bilateral reject, duration bounds, cooldown |
 | **Terminal** | `Sources/EyeTerm/Terminal/TerminalManager.swift` | AppleScript bridge to iTerm2/Terminal.app. Position-based window lookup for focus. Supports launch (create new) and adopt (use existing) modes |
 | **UI** | `Sources/EyeTerm/UI/SettingsView.swift` | Main settings panel (eye tracking, voice, terminal, visualization) |
-| **UI** | `Sources/EyeTerm/UI/GazeOverlayView.swift` | Full-screen transparent overlay showing gaze points, calibration dots, dwell progress |
+| **UI** | `Sources/EyeTerm/UI/EyeOverlayView.swift` | Full-screen transparent overlay showing gaze points, calibration dots, dwell progress |
 | **UI** | `Sources/EyeTerm/UI/AudioWaveformView.swift` | Floating waveform pill showing mic input levels |
 | **UI** | `Sources/EyeTerm/UI/CalibrationOverlayView.swift` | 9-point calibration target UI |
 

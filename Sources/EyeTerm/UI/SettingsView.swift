@@ -152,6 +152,11 @@ struct SettingsView: View {
                             Text("Responsive")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
+                            Text("\(state.eyeSmoothing, specifier: "%.2f")")
+                                .monospacedDigit()
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .frame(width: 30, alignment: .trailing)
                         }
                     }
                 }
@@ -166,6 +171,11 @@ struct SettingsView: View {
                             Text("Head")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
+                            Text("\(state.headWeight, specifier: "%.2f")")
+                                .monospacedDigit()
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .frame(width: 30, alignment: .trailing)
                         }
                     }
                 }
@@ -180,6 +190,11 @@ struct SettingsView: View {
                             Text("Wide")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
+                            Text("\(state.headPitchSensitivity, specifier: "%.2f")")
+                                .monospacedDigit()
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .frame(width: 30, alignment: .trailing)
                         }
                     }
                 }
@@ -194,6 +209,11 @@ struct SettingsView: View {
                             Text("Strong")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
+                            Text("\(state.headAmplification, specifier: "%.1f")×")
+                                .monospacedDigit()
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .frame(width: 30, alignment: .trailing)
                         }
                     }
                 }
@@ -415,6 +435,19 @@ struct SettingsView: View {
                     Toggle("Enable Wink Gestures", isOn: $state.blinkGesturesEnabled)
                 }
 
+                LabeledContent("Calibrate Winks") {
+                    HStack(spacing: 8) {
+                        Button("Left Eye") {
+                            coordinator.startWinkCalibration(eye: .left)
+                        }
+                        Button("Right Eye") {
+                            coordinator.startWinkCalibration(eye: .right)
+                        }
+                    }
+                }
+                .disabled(!state.isEyeTrackingActive)
+                settingHint("Wink each eye 5 times and press Done. Thresholds are computed from your actual winks. Eye tracking must be running.")
+
                 described("Action sent to the focused terminal when you close your left eye.") {
                     Picker("Left Wink", selection: $state.leftWinkAction) {
                         ForEach(WinkAction.allCases) { action in
@@ -629,6 +662,11 @@ struct SettingsView: View {
                             Text("Less sensitive")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
+                            Text("\(state.micSensitivity, specifier: "%.3f")")
+                                .monospacedDigit()
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .frame(width: 36, alignment: .trailing)
                         }
                     }
                 }
@@ -965,7 +1003,8 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 380, height: 600)
+        .frame(minWidth: 380, idealWidth: 380, maxWidth: 380,
+               minHeight: 400, idealHeight: 600)
     }
 
     // MARK: - Helpers
@@ -1200,8 +1239,7 @@ private struct WinkIndicatorView: View {
     var body: some View {
         HStack(spacing: 8) {
             if let event = lastWinkEvent {
-                Image(systemName: event.side == .left ? "eye.trianglebadge.exclamationmark" : "eye.trianglebadge.exclamationmark")
-                    .symbolRenderingMode(.hierarchical)
+                Image(systemName: "eye.fill")
                     .foregroundStyle(flash ? .green : .secondary)
                     .font(.system(size: 14))
                 Text("\(event.side == .left ? "Left" : "Right") wink \u{2192} \(event.action.shortLabel)")

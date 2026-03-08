@@ -24,6 +24,7 @@ struct EyeTermApp: App {
             SettingsView()
                 .environment(appState)
                 .environment(coordinator)
+                .frame(minWidth: 480, minHeight: 400)
         }
     }
 }

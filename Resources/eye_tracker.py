@@ -121,7 +121,13 @@ def enumerate_cameras_deprecated():
 
 
 def enumerate_cameras_discovery():
-    """Enumerate via AVCaptureDeviceDiscoverySession (matches OpenCV 4.7+)."""
+    """Enumerate via AVCaptureDeviceDiscoverySession, sorted external-first to match OpenCV.
+
+    OpenCV 4.7+ enumerates external cameras before built-in internally.
+    IMPORTANT: macOS ignores the device type order in the discoverySession input array —
+    it always returns built-in cameras first regardless of what order you request.
+    We must manually sort the results to put external cameras first.
+    """
     import AVFoundation
     try:
         ext_type = AVFoundation.AVCaptureDeviceTypeExternal
@@ -129,62 +135,61 @@ def enumerate_cameras_discovery():
         ext_type = AVFoundation.AVCaptureDeviceTypeExternalUnknown
     session = AVFoundation.AVCaptureDeviceDiscoverySession.\
         discoverySessionWithDeviceTypes_mediaType_position_(
-            [AVFoundation.AVCaptureDeviceTypeBuiltInWideAngleCamera, ext_type],
+            [ext_type, AVFoundation.AVCaptureDeviceTypeBuiltInWideAngleCamera],
             AVFoundation.AVMediaTypeVideo,
             AVFoundation.AVCaptureDevicePositionUnspecified,
         )
-    return list(session.devices())
+    devices = list(session.devices())
+    # macOS returns built-in first regardless of type array order — manually re-sort
+    # to put external cameras first, matching OpenCV's actual enumeration order.
+    builtin_type = AVFoundation.AVCaptureDeviceTypeBuiltInWideAngleCamera
+    external = [d for d in devices if d.deviceType() != builtin_type]
+    builtin = [d for d in devices if d.deviceType() == builtin_type]
+    return external + builtin
 
 
 def find_camera_index(uid, name, fallback):
     """
     Resolve the OpenCV VideoCapture index for the desired camera.
 
-    Tries the deprecated AVFoundation API first (matches OpenCV < 4.7),
-    then DiscoverySession (matches OpenCV 4.7+). Emits a diagnostic on stderr
-    showing both orderings so mismatches can be debugged.
+    OpenCV on macOS uses AVCaptureDeviceDiscoverySession ordering internally
+    (external cameras first, then built-in). We must use that same ordering
+    when mapping device names/UIDs to integer indices — using any other
+    ordering (e.g. the deprecated AVCaptureDevice.devicesWithMediaType: API,
+    which may be built-in-first) will return wrong indices and open the
+    wrong camera.
 
     Matching priority:
-      1. Exact uniqueID match  (unambiguous, platform-stable)
-      2. Name substring match  (fallback when UID is stale)
-      3. `fallback` index      (last resort)
+      1. Exact uniqueID match in discovery ordering
+      2. Name substring match in discovery ordering
+      3. `fallback` index (last resort)
     """
-    def search(devices, uid, name):
-        if uid:
-            for i, d in enumerate(devices):
-                if d.uniqueID() == uid:
-                    return i, d.localizedName()
-        if name:
-            nl = name.lower()
-            for i, d in enumerate(devices):
-                if nl in d.localizedName().lower():
-                    return i, d.localizedName()
-        return None, None
-
     try:
         import AVFoundation
 
-        dep_devices = enumerate_cameras_deprecated()
-        disc_devices = enumerate_cameras_discovery()
+        # ONLY use discovery ordering — this is what OpenCV uses internally.
+        devices = enumerate_cameras_discovery()
+        disc_names = [d.localizedName() for d in devices]
 
-        dep_names  = [d.localizedName() for d in dep_devices]
-        disc_names = [d.localizedName() for d in disc_devices]
-
-        # Emit diagnostic so the overlay can show which API found what
         emit({"status": "camera_diag",
-              "deprecated_order": dep_names,
               "discovery_order": disc_names,
               "uid": uid, "name": name, "fallback": fallback})
 
-        # Try deprecated API first (most OpenCV builds use this)
-        idx, found_name = search(dep_devices, uid, name)
-        if idx is not None:
-            return idx, found_name
+        # UID match (exact) — authoritative.
+        if uid:
+            for i, d in enumerate(devices):
+                if d.uniqueID() == uid:
+                    emit({"status": "camera_resolved", "method": "uid",
+                          "index": i, "name": d.localizedName()})
+                    return i, d.localizedName()
 
-        # Try DiscoverySession (OpenCV 4.7+)
-        idx, found_name = search(disc_devices, uid, name)
-        if idx is not None:
-            return idx, found_name
+        # Name match (substring).
+        if name:
+            for i, d in enumerate(devices):
+                if name.lower() in d.localizedName().lower():
+                    emit({"status": "camera_resolved", "method": "name",
+                          "index": i, "name": d.localizedName()})
+                    return i, d.localizedName()
 
         return fallback, name
 
@@ -223,16 +228,31 @@ def main():
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
     cap.set(cv2.CAP_PROP_FPS, 30)
 
-    # Post-open verification: re-enumerate via the same deprecated API OpenCV uses and emit
-    # the uniqueID of the device at camera_index. Swift uses this for an unambiguous UID lookup
-    # instead of fuzzy name matching, eliminating preview/tracking camera desync.
+    # Post-open verification: confirm we opened the right camera using the
+    # SAME discovery ordering that OpenCV uses. dep_devices ordering can differ
+    # (built-in-first on some systems) and would identify the wrong camera.
     verified_uid = ""
     try:
-        dep_devices = enumerate_cameras_deprecated()
-        if camera_index < len(dep_devices):
-            d = dep_devices[camera_index]
+        disc_devices = enumerate_cameras_discovery()
+        if camera_index < len(disc_devices):
+            d = disc_devices[camera_index]
             verified_uid = d.uniqueID()
             camera_name = d.localizedName()
+
+        # Self-correct if we opened the wrong camera.
+        if args.camera_uid and verified_uid != args.camera_uid:
+            for try_idx, d in enumerate(disc_devices):
+                if d.uniqueID() == args.camera_uid:
+                    cap.release()
+                    cap = cv2.VideoCapture(try_idx)
+                    if cap.isOpened():
+                        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                        cap.set(cv2.CAP_PROP_FPS, 30)
+                        camera_index = try_idx
+                        verified_uid = d.uniqueID()
+                        camera_name = d.localizedName()
+                    break
     except Exception:
         pass
 

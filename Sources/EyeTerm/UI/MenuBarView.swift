@@ -169,7 +169,6 @@ struct MenuBarView: View {
                     Label("Settings", systemImage: "gear")
                 }
                 .buttonStyle(CompactMenuButtonStyle())
-                .onHover { _ in }
                 .simultaneousGesture(TapGesture().onEnded {
                     coordinator.bringSettingsWindowToFront()
                 })
@@ -191,8 +190,8 @@ struct MenuBarView: View {
                 coordinator.stopAll()
                 Task {
                     try? await coordinator.terminalManager.tearDown()
+                    NSApplication.shared.terminate(nil)
                 }
-                NSApplication.shared.terminate(nil)
             } label: {
                 Label("Quit", systemImage: "xmark.circle")
             }
@@ -225,6 +224,7 @@ struct MenuBarView: View {
     private func terminalModeButton(_ mode: TerminalSetupMode, label: String) -> some View {
         Button {
             appState.terminalSetupMode = mode
+            appState.persistSettings()
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: appState.terminalSetupMode == mode ? "checkmark" : "")
@@ -295,11 +295,11 @@ struct MenuBarView: View {
                 .font(.caption2)
                 .foregroundStyle(.green)
                 .lineLimit(1)
-        case .failed:
-            Label("Model failed", systemImage: "xmark.circle.fill")
+        case .failed(let reason):
+            Label("Model failed: \(reason)", systemImage: "xmark.circle.fill")
                 .font(.caption2)
                 .foregroundStyle(.red)
-                .lineLimit(1)
+                .lineLimit(2)
         }
     }
 

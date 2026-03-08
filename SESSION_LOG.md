@@ -4,6 +4,47 @@ This file tracks session handoffs so the next Claude Code instance can quickly g
 
 ---
 
+## Session — 2026-03-06 17:50
+
+### Goal
+Deploy v1.01 camera fix, UI cleanup (camera preview buttons icons-only, no debug text, wink calibration dropdown, settings button), and fix overlay/eye-viz buttons being blue on launch.
+
+### Accomplished
+- **v1.01 — Camera mismatch root cause fixed**: macOS `AVCaptureDevice.DiscoverySession` silently ignores device type array order, always returns built-in first. Manually sort results (`external + builtin`) in both `opencvOrderedDevices()` (MediaPipeBackend.swift) and `enumerate_cameras_discovery()` (eye_tracker.py). Confirmed working — user said "hallelujah."
+- **v1.02 — Camera preview UI cleanup**: Removed all diagnostic text rows (feed/track/sel camera labels + DiagRow struct). Removed text labels from all buttons (icons only).
+- **v1.03 — Wink calibration dropdown + settings button**: Added `Menu` with eye.slash.fill icon → "Calibrate Left" / "Calibrate Right" triggering `coordinator.startWinkCalibration(eye:)`. Added settings button using `@Environment(\.openSettings)` (was broken before — was calling `bringSettingsWindowToFront()` which only works if window already exists).
+- **v1.04 — Overlay button off by default**: Changed `overlayAndFocusEnabled` default to `false`, added `coordinator.syncOverlayVisibility()` public wrapper, added `.onAppear` call in CameraPreviewView.
+- **v1.05 — Attempted UserDefaults fix**: Added onAppear sync. Buttons still blue due to persisted settings.
+- **v1.06 — True fix for blue buttons on launch**: Removed `overlayAndFocusEnabled` from `loadPersistedSettings()` (it was being loaded from `settings.json` and overriding the `false` default). Changed `showCameraEyeVisualization` default from `true` to `false`. Both buttons now start unlit on every launch.
+
+### In Progress / Incomplete
+- Nothing — all session goals completed and verified.
+
+### Key Decisions
+- `overlayAndFocusEnabled` intentionally NOT restored from persisted settings — it should always reset to `false` on launch (transient UI state, not a preference).
+- `showCameraEyeVisualization` default changed to `false` — user preference to start clean.
+- Settings button uses `@Environment(\.openSettings)` not `coordinator.bringSettingsWindowToFront()`.
+
+### Files Changed
+- `Sources/EyeTerm/App/AppVersion.swift` — bumped 1.00 → 1.06
+- `Sources/EyeTerm/App/AppState.swift` — `overlayAndFocusEnabled` default `false`, removed from `loadPersistedSettings`, `showCameraEyeVisualization` default `false`
+- `Sources/EyeTerm/App/AppCoordinator.swift` — added `syncOverlayVisibility()` public wrapper
+- `Sources/EyeTerm/EyeTracking/MediaPipeBackend.swift` — `opencvOrderedDevices()` manually sorts external-first after DiscoverySession
+- `Resources/eye_tracker.py` — `enumerate_cameras_discovery()` manually sorts external-first after DiscoverySession
+- `Sources/EyeTerm/UI/CameraPreviewView.swift` — removed debug text, icons-only buttons, wink calibration menu, settings button, onAppear sync
+
+### Known Issues
+- None introduced this session.
+
+### Running Services
+- None.
+
+### Next Steps
+- Verify on launch: both overlay and eye-viz buttons start unlit (v1.06 fix).
+- Consider whether `isVoiceEnabled` should also reset to `false` on launch (currently persisted and restored).
+
+---
+
 ## Session — 2026-03-06 00:15
 
 ### Goal
@@ -778,3 +819,53 @@ Fix the rename-window Claude Code skill (TTY approach wasn't working), add persi
 - Test `rename-all` skill with multiple iTerm2 windows open
 - Test eyeTerm terminal setup with `renameWindowsToProjectName: true` to verify Cmd+I approach works during setup
 - Consider whether `waitForPromptDialog()` stagger is still needed now that eyeTerm handles rename internally
+
+---
+
+## Session — 2026-03-07 12:41
+
+### Goal
+Comprehensive testing audit of the entire eyeTerm app. Find every bug, UI inconsistency, dead code, and improvement opportunity. Present findings in a beautiful HTML report. Fix as many bugs as possible within a 1-hour session.
+
+### Accomplished
+- Audited 28 source files using 5 parallel Explore agents (AppState, AppCoordinator, SettingsView, MenuBarView, EyeOverlayView, CameraPreviewView, TerminalManager, CalibrationManager, WinkCalibrationManager, BlinkGestureDetector, all voice backends, all eye tracking backends, UI files, and more)
+- Created `audit-report.html` — dark-themed interactive report with 79 findings (41 bugs, 38 improvements), categorized by file, with severity badges (P0/P1/P2), fix status tracking, and stats banner
+- Fixed 21 bugs across 4 version bumps (v1.09–v1.12):
+  - v1.09: 6 persistence gaps (overlayMode, keepOverlayOnTop, terminalGridColumns/Rows, showCalibrationTargets, showCursorDot), hardcoded Python path, duplicate StatusBarButton icon, terminal state not reset on setup failure, NSNotification observer leak, voiceBackend race condition, discarded error info, hardcoded bundle ID
+  - v1.10: Fixed indentation, removed dead `.onHover` code
+  - v1.11: Wink calibration buttons disabled when tracking off, numeric readouts on 5 sliders
+  - v1.12: showCameraEyeVisualization persistence, calibrationSamples dead code removal, camera preview hidden on tracking stop, CLAUDE.md file reference fix, terminalSetupMode immediate persistence, dictation text overflow guard, settings window minimum size
+- Reclassified 11 false positive findings with explanations
+
+### In Progress / Incomplete
+- ~47 remaining findings not yet addressed (mostly P1/P2 improvements and edge-case bugs)
+
+### Key Decisions
+- `try!` on static regex literals is idiomatic Swift — reclassified as Not a Bug
+- Task { } closures don't need [weak self] — they run to completion and release
+- HeadY sign inversion between backends is intentional (opposite raw data conventions)
+- AppleScript injection is by design (app's purpose is typing into terminals)
+- Borderless NSPanel doesn't need NSWindowDelegate for close (no close button)
+
+### Files Changed
+- `Sources/EyeTerm/App/AppVersion.swift` — bumped 1.08 → 1.12
+- `Sources/EyeTerm/App/AppState.swift` — fixed 7 persistence gaps, removed calibrationSamples dead code
+- `Sources/EyeTerm/App/AppCoordinator.swift` — fixed observer leak, race condition, camera preview dismiss on stop, removed calibrationSamples write
+- `Sources/EyeTerm/App/EyeTermApp.swift` — added settings window minimum size
+- `Sources/EyeTerm/UI/SettingsView.swift` — wink calibration disable guard, 5 slider numeric readouts
+- `Sources/EyeTerm/UI/MenuBarView.swift` — removed dead onHover, fixed terminalSetupMode persistence
+- `Sources/EyeTerm/UI/EyeOverlayView.swift` — dictation text overflow guard
+- `CLAUDE.md` — fixed GazeOverlayView → EyeOverlayView reference
+- `audit-report.html` — created and iteratively updated
+
+### Known Issues
+- No remaining blockers
+- ~47 audit findings remain unfixed (see audit-report.html for full list)
+
+### Running Services
+- eyeTerm v1.12 deployed at `/Applications/eyeTerm.app`
+
+### Next Steps
+- Review audit-report.html in browser for remaining findings
+- Prioritize remaining P1 bugs: isEyeTermWindowKey(), MediaPipe subprocess cleanup, WhisperKit async race
+- Consider UX improvements: tracking lost indicator, FPS counter, global keyboard shortcuts

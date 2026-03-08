@@ -10,7 +10,6 @@ final class AppState {
     var activeSlot: Int? = nil
     var eyeConfidence: Double = 0
     var isCalibrated = false
-    var calibrationSamples: Int = 0
 
     // MARK: - Voice
     var isVoiceActive = false
@@ -46,8 +45,6 @@ final class AppState {
     // MARK: - Quick Toggles (Camera Preview toolbar)
     /// Quick-toggle for voice transcription without opening Settings.
     var isVoiceEnabled: Bool = true
-    /// When false, hides the overlay and blocks gaze-based terminal focusing.
-    var overlayAndFocusEnabled: Bool = true
 
     // MARK: - Setup Behavior
     /// When true, voice and gaze focusing are disabled while terminals are launching.
@@ -67,7 +64,7 @@ final class AppState {
     var parallaxCorrX: Double = 0.0
     var parallaxCorrY: Double = 0.0
     var headAmplification: Double = 3.0
-    var overlayMode: OverlayMode = .subtle
+    var overlayMode: OverlayMode = .off
     var debugSmoothing: Double = 0.15
     var micSensitivity: Double = 0.01
     var selectedMicDeviceUID: String = ""   // empty = system default
@@ -75,6 +72,7 @@ final class AppState {
     var selectedCameraDeviceID: String = ""  // empty = system default
     /// Set by AppCoordinator once the MediaPipe Python process reports back which camera it opened.
     var actualTrackingCameraInfo: String = ""  // e.g. "MacBook Pro Camera (index 0)"
+    var actualTrackingCameraName: String = ""  // plain name Python reported, e.g. "MacBook Pro Camera"
     var availableCameras: [(uid: String, name: String)] = []
     /// The live AVCaptureSession feeding the camera preview window. Set by AppCoordinator.
     var currentPreviewSession: AVCaptureSession? = nil
@@ -185,8 +183,8 @@ final class AppState {
     // MARK: - Camera Preview
     var isCameraPreviewVisible = false
     var faceObservationData: FaceObservationData?
-    var showCameraEyeVisualization: Bool = true
-    var showCameraDebugOverlay: Bool = false
+    var showCameraEyeVisualization: Bool = false
+    var showCameraDebugOverlay: Bool { overlayMode != .off }
 
     // MARK: - Status
     var statusMessage = "Idle"
@@ -298,8 +296,13 @@ final class AppState {
             "selectedCameraDeviceID": selectedCameraDeviceID,
             "winkProfiles": winkProfiles.mapValues { $0.asDictionary() },
             "isVoiceEnabled": isVoiceEnabled,
-            "overlayAndFocusEnabled": overlayAndFocusEnabled,
             "blockInteractionDuringSetup": blockInteractionDuringSetup,
+            "overlayMode": overlayMode.rawValue,
+            "keepOverlayOnTop": keepOverlayOnTop,
+            "terminalGridColumns": terminalGridColumns,
+            "terminalGridRows": terminalGridRows,
+            "selectedDisplayID": Int(selectedDisplayID),
+            "showCameraEyeVisualization": showCameraEyeVisualization,
         ]
 
         guard let data = try? JSONSerialization.data(withJSONObject: settings, options: [.prettyPrinted, .sortedKeys]) else { return }
@@ -376,8 +379,13 @@ final class AppState {
             "selectedCameraDeviceID": selectedCameraDeviceID,
             "winkProfiles": winkProfiles.mapValues { $0.asDictionary() },
             "isVoiceEnabled": isVoiceEnabled,
-            "overlayAndFocusEnabled": overlayAndFocusEnabled,
             "blockInteractionDuringSetup": blockInteractionDuringSetup,
+            "overlayMode": overlayMode.rawValue,
+            "keepOverlayOnTop": keepOverlayOnTop,
+            "terminalGridColumns": terminalGridColumns,
+            "terminalGridRows": terminalGridRows,
+            "selectedDisplayID": Int(selectedDisplayID),
+            "showCameraEyeVisualization": showCameraEyeVisualization,
         ]
         // Include calibration transforms from UserDefaults so they survive reinstalls.
         var mutable = settings
@@ -445,8 +453,13 @@ final class AppState {
         if let v = dict["claudeInitialPromptStagger"] as? Double { claudeInitialPromptStagger = v }
         if let v = dict["renameWindowsToProjectName"] as? Bool { renameWindowsToProjectName = v }
         if let v = dict["isVoiceEnabled"] as? Bool { isVoiceEnabled = v }
-        if let v = dict["overlayAndFocusEnabled"] as? Bool { overlayAndFocusEnabled = v }
         if let v = dict["blockInteractionDuringSetup"] as? Bool { blockInteractionDuringSetup = v }
+        if let v = dict["overlayMode"] as? Int, let e = OverlayMode(rawValue: v) { overlayMode = e }
+        if let v = dict["keepOverlayOnTop"] as? Bool { keepOverlayOnTop = v }
+        if let v = dict["terminalGridColumns"] as? Int { terminalGridColumns = v }
+        if let v = dict["terminalGridRows"] as? Int { terminalGridRows = v }
+        if let v = dict["selectedDisplayID"] as? Int { selectedDisplayID = CGDirectDisplayID(v) }
+        if let v = dict["showCameraEyeVisualization"] as? Bool { showCameraEyeVisualization = v }
         if let rawProfiles = dict["winkProfiles"] as? [String: [String: Double]] {
             var loaded: [String: WinkProfile] = [:]
             for (uid, profileDict) in rawProfiles {

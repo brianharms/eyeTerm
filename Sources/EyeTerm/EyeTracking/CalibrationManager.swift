@@ -31,7 +31,12 @@ final class CalibrationManager {
     private static let parallaxCorrXKey = "ParallaxCorrX"
     private static let parallaxCorrYKey = "ParallaxCorrY"
 
-    private static let calibrationFileURL = URL(fileURLWithPath: "/Users/brianharms/Desktop/Claude Projects/eyeTerm/calibration.json")
+    private static var calibrationFileURL: URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let dir = appSupport.appendingPathComponent("eyeTerm")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("calibration.json")
+    }
 
     // MARK: - Public state
 

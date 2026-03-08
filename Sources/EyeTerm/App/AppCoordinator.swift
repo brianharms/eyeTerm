@@ -32,10 +32,15 @@ final class AppCoordinator {
     private var partialClearTask: Task<Void, Never>?
     private var windowObserver: NSKeyValueObservation?
     private var previousCameraID: String = ""
+    private var trackingCameraRestartCount = 0
+    private var notificationObservers: [Any] = []
 
     let mediaPipeSetupManager = MediaPipeSetupManager()
     private var mediaPipeSetupWindow: NSPanel?
     private var permissionsWindow: NSPanel?
+
+    private var winkCalibManager: WinkCalibrationManager?
+    private var winkCalibWindow: NSPanel?
 
     // Debug visualization smoothers (separate from pipeline smoothing)
     private var debugHeadFilter = EyeTermEMAFilter(alpha: 0.15)
@@ -113,7 +118,7 @@ final class AppCoordinator {
             self.appState.focusedSlot = slot
             guard self.appState.isTerminalSetup else { return }
             guard !self.appState.gazeActivationLocked else { return }
-            guard self.appState.overlayAndFocusEnabled else { return }
+            guard !self.isEyeTermWindowKey() else { return }
             Task {
                 do {
                     try await self.terminalManager.focusTerminal(slotIndex: slot)
@@ -219,10 +224,7 @@ final class AppCoordinator {
             self.dismissCalibrationOverlay()
         }
 
-        calibrationManager.onNextTarget = { [weak self] _ in
-            guard let self else { return }
-            self.appState.calibrationSamples = self.calibrationManager.currentTargetIndex
-        }
+        calibrationManager.onNextTarget = { _ in }
 
         activeBackend.onRawEyePoint = { [weak self] point in
             guard let self else { return }
@@ -268,6 +270,12 @@ final class AppCoordinator {
                     rightAperture: faceData?.rightEyeAperture
                 )
             }
+            if let calib = self.winkCalibManager {
+                calib.update(
+                    leftAperture: faceData?.leftEyeAperture ?? 0,
+                    rightAperture: faceData?.rightEyeAperture ?? 0
+                )
+            }
         }
 
         if let mpBackend = activeBackend as? MediaPipeBackend {
@@ -278,11 +286,56 @@ final class AppCoordinator {
                 guard let self else { return }
                 let label = name.isEmpty ? "camera \(idx)" : "\(name) (index \(idx))"
                 self.appState.actualTrackingCameraInfo = label
-                // Sync preview session to the camera Python actually opened.
-                // verifiedUID is the AVFoundation uniqueID Python confirmed post-open via PyObjC —
-                // unambiguous and order-independent. Falls back to name/index if PyObjC unavailable.
-                mpBackend.syncPreviewToTrackingCamera(cameraName: name, opencvIndex: idx, verifiedUID: uid) { [weak self] in
-                    self?.appState.currentPreviewSession = mpBackend.activeCaptureSession
+                self.appState.actualTrackingCameraName = name
+
+                // The user's intended camera is the ground truth — not what Python opened.
+                // Resolve it by name from selectedCameraDeviceID so the preview is always
+                // anchored to the user's explicit choice rather than Python's index guess.
+                let intendedName: String
+                if !self.appState.selectedCameraDeviceID.isEmpty,
+                   let device = Self.resolveCamera(uniqueID: self.appState.selectedCameraDeviceID) {
+                    intendedName = device.localizedName
+                } else {
+                    intendedName = name  // No specific camera selected — accept what Python opened.
+                }
+
+                let feedName = (mpBackend.activeCaptureSession?.inputs.first as? AVCaptureDeviceInput)?.device.localizedName ?? "none"
+                NSLog("[eyeTerm camSync] onStarted — python='\(name)' idx=\(idx) intended='\(intendedName)' feedBefore='\(feedName)' selectedUID='\(self.appState.selectedCameraDeviceID)'")
+
+                // Always sync the preview to the INTENDED camera.
+                let syncName = intendedName.isEmpty ? name : intendedName
+                if !syncName.isEmpty {
+                    mpBackend.syncPreviewByName(syncName) { [weak self] in
+                        guard let self else { return }
+                        self.appState.currentPreviewSession = mpBackend.activeCaptureSession
+                        let feedAfter = (mpBackend.activeCaptureSession?.inputs.first as? AVCaptureDeviceInput)?.device.localizedName ?? "none"
+                        NSLog("[eyeTerm camSync] afterSync — feed='\(feedAfter)' tracking='\(name)' intended='\(syncName)' match=\(feedAfter == syncName || feedAfter.localizedCaseInsensitiveContains(syncName) || syncName.localizedCaseInsensitiveContains(feedAfter))")
+                    }
+                } else {
+                    self.appState.currentPreviewSession = mpBackend.activeCaptureSession
+                }
+
+                // If Python opened the wrong camera, restart once so tracking catches up.
+                // A guard counter prevents infinite loops when Python can't resolve the camera.
+                if !intendedName.isEmpty && !name.isEmpty {
+                    let nameMatches = name == intendedName
+                        || name.localizedCaseInsensitiveContains(intendedName)
+                        || intendedName.localizedCaseInsensitiveContains(name)
+                    if !nameMatches {
+                        if self.trackingCameraRestartCount < 2 {
+                            self.trackingCameraRestartCount += 1
+                            NSLog("[eyeTerm camSync] MISMATCH — restarting tracking (attempt \(self.trackingCameraRestartCount)/2). python='\(name)' intended='\(intendedName)'")
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                                self?.restartEyeTracking()
+                            }
+                        } else {
+                            NSLog("[eyeTerm camSync] MISMATCH — gave up after 2 restarts. python='\(name)' intended='\(intendedName)'")
+                            // Gave up — reset for next intentional camera switch.
+                            self.trackingCameraRestartCount = 0
+                        }
+                    } else {
+                        self.trackingCameraRestartCount = 0
+                    }
                 }
             }
         }
@@ -305,7 +358,7 @@ final class AppCoordinator {
             return
         }
 
-        guard let slotIndex = appState.focusedSlot else {
+        guard let slotIndex = appState.focusedSlot ?? appState.activeSlot else {
             appState.addError("Voice: heard \"\(text)\" but no terminal is focused — look at a quadrant first")
             transcriptionDiffer.reset()
             return
@@ -446,7 +499,6 @@ final class AppCoordinator {
             _ = appState.selectedDisplayID
             _ = appState.keepOverlayOnTop
             _ = appState.isVoiceEnabled
-            _ = appState.overlayAndFocusEnabled
         } onChange: { [weak self] in
             DispatchQueue.main.async {
                 self?.pushAllSettings()
@@ -538,12 +590,6 @@ final class AppCoordinator {
             Task { await startVoice() }
         }
 
-        // Overlay+Focus quick-toggle: show/hide overlay panel.
-        if appState.overlayAndFocusEnabled {
-            if eyeTermOverlayWindow?.isVisible == false { eyeTermOverlayWindow?.orderFront(nil) }
-        } else {
-            eyeTermOverlayWindow?.orderOut(nil)
-        }
     }
 
     // MARK: - Start / Stop All
@@ -563,7 +609,7 @@ final class AppCoordinator {
         let camGranted  = Permissions.checkCamera() == .granted
         let micGranted  = Permissions.checkMicrophone() == .granted
         let accGranted  = Permissions.checkAccessibility()
-        let autoGranted = Permissions.checkAutomation(bundleID: "com.googlecode.iterm2") == .granted
+        let autoGranted = Permissions.checkAutomation(bundleID: appState.preferredTerminal.bundleIdentifier) == .granted
 
         guard camGranted && micGranted && accGranted && autoGranted else {
             appState.statusMessage = "Permissions required"
@@ -583,9 +629,7 @@ final class AppCoordinator {
             startEyeTracking()
         }
 
-        if !appState.isVoiceActive {
-            await startVoice()
-        }
+        await startVoice()
 
         updateStatus()
     }
@@ -596,6 +640,7 @@ final class AppCoordinator {
         dwellTimer.reset()
         appState.focusedSlot = nil
         appState.activeSlot = nil
+        appState.isTerminalSetup = false
         dismissEyeTermOverlay()
         updateStatus()
     }
@@ -603,13 +648,11 @@ final class AppCoordinator {
     // MARK: - Terminals
 
     func setupTerminals() async {
-        // Optionally lock gaze/voice during setup (controlled by blockInteractionDuringSetup setting).
-        // Eye tracking stays running so the camera preview remains visible.
-        if appState.blockInteractionDuringSetup {
-            appState.gazeActivationLocked = true
-            if activeVoiceBackend.isRunning { stopVoice() }
-        }
-        appState.statusMessage = "Setting up terminals..."
+        // Always lock gaze focusing during terminal setup so dwell doesn't fire at iTerm2 windows
+        // while they're being launched/positioned. Voice is only stopped if blockInteractionDuringSetup.
+        appState.gazeActivationLocked = true
+        if appState.blockInteractionDuringSetup && activeVoiceBackend.isRunning { stopVoice() }
+        appState.statusMessage = "Eye focusing paused — launching terminals…"
 
         do {
             switch appState.terminalSetupMode {
@@ -621,24 +664,29 @@ final class AppCoordinator {
                 try await terminalManager.setupProjectTerminals(projectURLs: appState.selectedProjectFolders, initialPrompt: appState.claudeInitialPrompt, initialPromptStagger: appState.claudeInitialPromptStagger, renameToProjectName: appState.renameWindowsToProjectName, appState: appState, screen: selectedScreen())
             }
             appState.isTerminalSetup = true
-            appState.statusMessage = "Terminals ready"
         } catch {
             appState.addError("Terminal setup failed: \(error.localizedDescription)")
         }
 
-        if appState.blockInteractionDuringSetup {
-            appState.gazeActivationLocked = false
-            if appState.isVoiceEnabled { Task { await startVoice() } }
-        }
+        appState.gazeActivationLocked = false
+        if appState.blockInteractionDuringSetup && appState.isVoiceEnabled { Task { await startVoice() } }
+        // Ensure overlay is visible if the user enabled it before terminals were ready.
+        updateOverlayVisibility()
         updateStatus()
     }
 
     // MARK: - Eye Tracking
 
     func startEyeTracking() {
-        // For MediaPipe, ensure venv python is wired in if setup already ran.
-        if activeBackend is MediaPipeBackend {
+        // Always push the current camera selection and Python path before starting —
+        // observeSettings only fires on *changes*, so a first-start from cold state
+        // (calibration, app launch before any settings interaction) would otherwise
+        // use a stale/empty selectedCameraDeviceID and default to index 0 (Logitech).
+        if let mp = activeBackend as? MediaPipeBackend {
             applyMediaPipePython()
+            mp.selectedCameraDeviceID = appState.selectedCameraDeviceID
+        } else if let tracker = activeBackend as? EyeTermTracker {
+            tracker.selectedCaptureDevice = Self.resolveCamera(uniqueID: appState.selectedCameraDeviceID)
         }
         do {
             try activeBackend.start()
@@ -661,7 +709,9 @@ final class AppCoordinator {
         appState.isEyeTrackingActive = false
         appState.activeSlot = nil
         appState.actualTrackingCameraInfo = ""
+        appState.actualTrackingCameraName = ""
         appState.currentPreviewSession = nil
+        dismissCameraPreview()
         dismissEyeTermOverlay()
         updateStatus()
     }
@@ -669,6 +719,7 @@ final class AppCoordinator {
     // MARK: - Voice
 
     func startVoice() async {
+        guard !activeVoiceBackend.isRunning else { return }
         activeVoiceBackend.modelName = appState.whisperModel
         activeVoiceBackend.inputDeviceUID = appState.selectedMicDeviceUID.isEmpty ? nil : appState.selectedMicDeviceUID
         commandParser.enableNormalization = appState.enableTextNormalization
@@ -832,6 +883,11 @@ final class AppCoordinator {
         showCalibrationOverlay()
     }
 
+    func cancelCalibration() {
+        calibrationManager.reset()
+        dismissCalibrationOverlay()
+    }
+
     // MARK: - Window Level
 
     // Level above the overlay (.screenSaver = 1000) so Settings is always visible
@@ -861,7 +917,7 @@ final class AppCoordinator {
             }
         }
 
-        NotificationCenter.default.addObserver(
+        notificationObservers.append(NotificationCenter.default.addObserver(
             forName: NSWindow.didBecomeKeyNotification,
             object: nil,
             queue: .main
@@ -876,9 +932,9 @@ final class AppCoordinator {
             } else {
                 window.level = .floating
             }
-        }
+        })
 
-        NotificationCenter.default.addObserver(
+        notificationObservers.append(NotificationCenter.default.addObserver(
             forName: NSWindow.didResignKeyNotification,
             object: nil,
             queue: .main
@@ -892,10 +948,12 @@ final class AppCoordinator {
                 window.level = AppCoordinator.settingsWindowLevel
                 return
             }
+            // Camera preview always stays floating so it doesn't go behind terminal windows.
+            if window === self.cameraPreviewWindow { return }
             window.level = .normal
-        }
+        })
 
-        NotificationCenter.default.addObserver(
+        notificationObservers.append(NotificationCenter.default.addObserver(
             forName: NSWindow.didBecomeMainNotification,
             object: nil,
             queue: .main
@@ -907,13 +965,26 @@ final class AppCoordinator {
                   !(window is NSPanel) else { return }
             window.level = AppCoordinator.settingsWindowLevel
             NSApp.activate(ignoringOtherApps: true)
-        }
+        })
     }
 
     // MARK: - Overlay Mode
 
     func cycleOverlayMode() {
         appState.overlayMode = appState.overlayMode.next
+    }
+
+    func syncOverlayVisibility() { updateOverlayVisibility() }
+
+    /// Returns true if any eyeTerm-owned non-overlay window is currently key.
+    /// When true, gaze-based terminal focusing is suppressed so typing in Settings
+    /// or the camera preview doesn't accidentally fire AppleScript focus calls.
+    private func isEyeTermWindowKey() -> Bool {
+        guard let keyWin = NSApp.keyWindow else { return false }
+        // The full-screen overlay is not a "real" window — ignore it.
+        if keyWin === eyeTermOverlayWindow { return false }
+        // Any other eyeTerm-owned window (Settings, camera preview, onboarding, etc.)
+        return NSApp.windows.contains(keyWin)
     }
 
     private func updateOverlayVisibility() {
@@ -947,9 +1018,24 @@ final class AppCoordinator {
 
     func restartEyeTracking() {
         guard appState.isEyeTrackingActive else { return }
-        stopEyeTracking()
-        startEyeTracking()
-        // currentPreviewSession is updated in-place by startEyeTracking/onStarted — no window close needed
+        if let mp = activeBackend as? MediaPipeBackend {
+            // For MediaPipe, wait for the Python process to fully release the camera
+            // before starting a new one — fixes camera switching getting stuck.
+            dwellTimer.reset()
+            appState.isEyeTrackingActive = false
+            appState.activeSlot = nil
+            appState.actualTrackingCameraInfo = ""
+            appState.actualTrackingCameraName = ""
+            appState.currentPreviewSession = nil
+            dismissEyeTermOverlay()
+            updateStatus()
+            mp.stopAndWait { [weak self] in
+                self?.startEyeTracking()
+            }
+        } else {
+            stopEyeTracking()
+            startEyeTracking()
+        }
     }
 
     /// Select a specific camera for eye tracking and force-restart immediately.
@@ -957,6 +1043,8 @@ final class AppCoordinator {
     /// requested camera is already stored as selectedCameraDeviceID (avoids the withObservationTracking
     /// no-op when Python drifted to a different camera due to index ordering).
     func selectTrackingCamera(uniqueID: String) {
+        // Reset restart guard so the new intentional selection gets a fresh self-correction budget.
+        trackingCameraRestartCount = 0
         // Pre-sync the backend so pushAllSettings (triggered by appState change) won't double-restart.
         if let mp = activeBackend as? MediaPipeBackend {
             mp.selectedCameraDeviceID = uniqueID
@@ -985,7 +1073,7 @@ final class AppCoordinator {
     }
 
     private func registerScreenChangeListener() {
-        NotificationCenter.default.addObserver(
+        notificationObservers.append(NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil,
             queue: .main
@@ -993,7 +1081,7 @@ final class AppCoordinator {
             guard let self else { return }
             self.appState.refreshAvailableDisplays()
             self.refreshOverlayDisplay()
-        }
+        })
     }
 
     private func showEyeTermOverlay() {
@@ -1056,7 +1144,7 @@ final class AppCoordinator {
             .environment(appState)
             .environment(self)
 
-        let panel = NSPanel(
+        let panel = CameraPreviewPanel(
             contentRect: NSRect(x: 0, y: 0, width: 480, height: 360),
             styleMask: [.titled, .closable, .resizable, .nonactivatingPanel],
             backing: .buffered,
@@ -1067,6 +1155,10 @@ final class AppCoordinator {
         panel.title = "eyeTerm — Camera Preview"
         panel.isReleasedWhenClosed = false
         panel.center()
+        panel.onEscape = { [weak self] in
+            guard let self, self.calibrationOverlayWindow != nil else { return }
+            self.cancelCalibration()
+        }
         panel.delegate = CameraPreviewWindowDelegate { [weak self] in
             // User clicked the window's X button — fully discard it
             self?.cameraPreviewWindow = nil
@@ -1303,6 +1395,58 @@ final class AppCoordinator {
         calibrationOverlayWindow = nil
     }
 
+    // MARK: - Wink Calibration
+
+    func startWinkCalibration(eye: WinkCalibrationManager.Eye) {
+        guard winkCalibWindow == nil else { return }
+
+        // Ensure eye tracking is running so aperture data flows into the manager.
+        if !appState.isEyeTrackingActive {
+            startEyeTracking()
+        }
+
+        let manager = WinkCalibrationManager(eye: eye)
+        manager.onComplete = { [weak self] thresholds in
+            guard let self else { return }
+            self.appState.winkClosedThreshold = thresholds.closedThreshold
+            self.appState.winkOpenThreshold   = thresholds.openThreshold
+            self.appState.winkDipThreshold    = thresholds.dipThreshold
+            self.appState.minWinkDuration     = thresholds.minDuration
+            self.appState.maxWinkDuration     = thresholds.maxDuration
+            self.dismissWinkCalibration()
+        }
+        manager.onCancel = { [weak self] in
+            self?.dismissWinkCalibration()
+        }
+        winkCalibManager = manager
+
+        let screen = selectedScreen()
+        let panel = NSPanel(
+            contentRect: screen.frame,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        panel.level = .screenSaver
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = false
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.ignoresMouseEvents = false
+
+        let calibView = WinkCalibrationView(manager: manager)
+        panel.contentView = NSHostingView(rootView: calibView)
+        panel.makeKeyAndOrderFront(nil)
+        panel.setFrame(screen.frame, display: true)
+        winkCalibWindow = panel
+    }
+
+    private func dismissWinkCalibration() {
+        winkCalibWindow?.close()
+        winkCalibWindow = nil
+        winkCalibManager = nil
+    }
+
     // MARK: - Onboarding
 
     func showOnboardingWalkthrough() {
@@ -1443,6 +1587,9 @@ final class AppCoordinator {
     }
 
     deinit {
+        for observer in notificationObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
         if deviceChangeListenerRegistered, let block = deviceChangeListenerBlock {
             var address = AudioObjectPropertyAddress(
                 mSelector: kAudioHardwarePropertyDevices,
@@ -1468,6 +1615,16 @@ private final class CameraPreviewWindowDelegate: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         onClose()
+    }
+}
+
+/// NSPanel subclass that intercepts Escape — cancels calibration if active,
+/// otherwise does nothing (Escape never closes the camera preview).
+private final class CameraPreviewPanel: NSPanel {
+    var onEscape: (() -> Void)?
+
+    override func cancelOperation(_ sender: Any?) {
+        onEscape?()
     }
 }
 
