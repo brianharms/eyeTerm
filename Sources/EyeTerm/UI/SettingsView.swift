@@ -1003,8 +1003,8 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(minWidth: 380, idealWidth: 380, maxWidth: 380,
-               minHeight: 400, idealHeight: 600)
+        .frame(minWidth: 300, idealWidth: 340, maxWidth: 420,
+               minHeight: 600, idealHeight: 900, maxHeight: 1200)
     }
 
     // MARK: - Helpers

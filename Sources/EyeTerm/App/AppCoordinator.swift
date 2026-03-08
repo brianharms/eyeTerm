@@ -976,14 +976,16 @@ final class AppCoordinator {
 
     func syncOverlayVisibility() { updateOverlayVisibility() }
 
-    /// Returns true if any eyeTerm-owned non-overlay window is currently key.
+    /// Returns true if any eyeTerm-owned non-overlay, non-preview window is currently key.
     /// When true, gaze-based terminal focusing is suppressed so typing in Settings
-    /// or the camera preview doesn't accidentally fire AppleScript focus calls.
+    /// doesn't accidentally fire AppleScript focus calls.
     private func isEyeTermWindowKey() -> Bool {
         guard let keyWin = NSApp.keyWindow else { return false }
         // The full-screen overlay is not a "real" window — ignore it.
         if keyWin === eyeTermOverlayWindow { return false }
-        // Any other eyeTerm-owned window (Settings, camera preview, onboarding, etc.)
+        // Camera preview is a monitoring window — don't suppress terminal focus.
+        if keyWin === cameraPreviewWindow { return false }
+        // Any other eyeTerm-owned window (Settings, onboarding, etc.)
         return NSApp.windows.contains(keyWin)
     }
 

@@ -4,6 +4,38 @@ This file tracks session handoffs so the next Claude Code instance can quickly g
 
 ---
 
+## Session — 2026-03-08 04:25
+
+### Goal
+Diagnose why terminals weren't being focused and voice transcription text wasn't being entered when the camera preview window was open.
+
+### Accomplished
+- **v1.19 — Camera preview no longer blocks terminal focus**: Root cause was `isEyeTermWindowKey()` in `AppCoordinator.swift:982` — it returned `true` whenever the camera preview was the key window, which suppressed the `focusTerminal()` AppleScript call in `onDwellConfirmed`. Fix: added `if keyWin === cameraPreviewWindow { return false }` to exclude the camera preview, matching the existing pattern for `eyeTermOverlayWindow`. Settings and onboarding windows still suppress terminal focus (intentional).
+- **Diagnosis**: Traced the full pipeline — gaze → dwell → focusedSlot → voice dispatch → typeText. The `isEyeTermWindowKey()` guard at line 121 of `onDwellConfirmed` blocked the AppleScript focus call but NOT the `focusedSlot` assignment (line 118). However, without actual OS-level window focus, the user couldn't see terminals responding. Voice `typeText` uses iTerm2 session IDs (direct AppleScript addressing) so text SHOULD have been entered even without window focus — but the user reported it wasn't. The fix resolves the window focus suppression entirely.
+
+### In Progress / Incomplete
+- **Unverified by user**: v1.19 was built and launched but user initiated shutdown before confirming the fix works.
+
+### Key Decisions
+- Camera preview is a "monitoring window" — users keep it open while using eyeTerm, so it should NOT suppress gaze-based terminal focus (unlike Settings/onboarding which involve direct interaction).
+
+### Files Changed
+- `Sources/EyeTerm/App/AppCoordinator.swift` — `isEyeTermWindowKey()` now excludes `cameraPreviewWindow`
+- `Sources/EyeTerm/App/AppVersion.swift` — bumped to 1.19
+
+### Known Issues
+- Version jumped from 1.14 (last committed) to 1.19 — there are uncommitted changes from sessions v1.15–v1.18 in the working tree (EyeTermApp.swift, CameraPreviewView.swift, SettingsView.swift).
+
+### Running Services
+- eyeTerm v1.19 running at `/Applications/eyeTerm.app`
+
+### Next Steps
+- Verify the fix: launch terminals with Create New, keep camera preview open, speak with a pause — terminals should focus and text should be entered.
+- If text still isn't entered despite terminals focusing, investigate whether `typeText` AppleScript calls are failing (check Settings error log for "Command failed" messages).
+- Commit all outstanding source changes (v1.15–v1.19) together.
+
+---
+
 ## Session — 2026-03-06 17:50
 
 ### Goal

@@ -129,6 +129,7 @@ struct CameraPreviewView: View {
                         .font(.system(size: 12, weight: .medium))
                 }
                 .toggleStyle(.button)
+                .buttonStyle(.bordered)
                 .controlSize(.small)
                 .help("Toggle eye/face mesh visualization")
 
@@ -144,6 +145,7 @@ struct CameraPreviewView: View {
                         .font(.system(size: 12, weight: .medium))
                 }
                 .toggleStyle(.button)
+                .buttonStyle(.bordered)
                 .controlSize(.small)
                 .help("Toggle voice transcription on/off")
 
@@ -156,6 +158,7 @@ struct CameraPreviewView: View {
                         .font(.system(size: 12, weight: .medium))
                 }
                 .toggleStyle(.button)
+                .buttonStyle(.bordered)
                 .controlSize(.small)
                 .help("Cycle overlay mode: subtle → debug → off")
 
@@ -235,7 +238,7 @@ struct CameraPreviewView: View {
                     Task { await coordinator.startAll() }
                 } label: {
                     Image(systemName: "bolt.fill")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: 12, weight: .medium))
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
