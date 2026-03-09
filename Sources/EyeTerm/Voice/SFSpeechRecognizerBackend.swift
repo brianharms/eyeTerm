@@ -1,6 +1,7 @@
 import AVFoundation
 import CoreAudio
 import Speech
+import AVFAudio
 
 final class SFSpeechRecognizerBackend: VoiceTranscriptionBackend {
 
@@ -33,6 +34,22 @@ final class SFSpeechRecognizerBackend: VoiceTranscriptionBackend {
     private var silenceTimer: DispatchSourceTimer?
     private let silenceDuration: TimeInterval = 1.0  // seconds of silence before finalizing
 
+    /// Tracks the last partial transcription text per session so we can deliver it
+    /// as a final transcription if the recognition task is cancelled before isFinal fires
+    /// (e.g. when a new recognition task implicitly cancels the old one).
+    private var lastPartialText: String = ""
+
+    /// Safety timer: if endAudio() is called but neither isFinal nor error fires
+    /// within this timeout, deliver lastPartialText and restart the session.
+    private var endAudioTimeout: DispatchSourceTimer?
+    private let endAudioTimeoutDuration: TimeInterval = 2.5
+
+    /// Diagnostic: tracks audio buffer reception for startup health check.
+    private var diagBufferCount: Int = 0
+    private var diagPeakRMS: Float = 0
+    /// Callback for surfacing diagnostic info (wired by coordinator).
+    var onDiagnostic: ((String) -> Void)?
+
     // MARK: - Start / Stop
 
     func start() async throws {
@@ -52,6 +69,11 @@ final class SFSpeechRecognizerBackend: VoiceTranscriptionBackend {
             throw VoiceEngineError.microphoneUnavailable
         }
 
+        // TCC diagnostic — check all permission APIs for consistency
+        let avAuthStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+        print("[SFSpeechRecognizerBackend] AVCaptureDevice audio auth: \(avAuthStatus.rawValue) (0=notDetermined, 1=restricted, 2=denied, 3=authorized)")
+        onDiagnostic?("TCC mic status: AVCaptureDevice=\(avAuthStatus.rawValue) (3=OK)")
+
         let rec = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
         print("[SFSpeechRecognizerBackend] Recognizer: \(rec == nil ? "nil (locale unsupported?)" : "ok"), supportsOnDevice: \(rec?.supportsOnDeviceRecognition ?? false), available: \(rec?.isAvailable ?? false)")
         guard let rec else {
@@ -64,58 +86,26 @@ final class SFSpeechRecognizerBackend: VoiceTranscriptionBackend {
         recognizer = rec
         DispatchQueue.main.async { self.onModelState?(.ready) }
 
-        let engine = AVAudioEngine()
-
-        // Resolve the device UID to use — prefer explicit selection, then
-        // fall back to the built-in mic (ignoring the system default which
-        // may be AirPods/external device), then let AVAudioEngine decide.
-        let resolvedUID: String? = {
-            if let uid = inputDeviceUID, !uid.isEmpty { return uid }
-            return Self.builtInInputDeviceUID()
-        }()
-        if let uid = resolvedUID, let deviceID = Self.audioDeviceID(forUID: uid) {
-            var devID = deviceID
-            AudioUnitSetProperty(
-                engine.inputNode.audioUnit!,
-                kAudioOutputUnitProperty_CurrentDevice,
-                kAudioUnitScope_Global,
-                0,
-                &devID,
-                UInt32(MemoryLayout<AudioDeviceID>.size)
-            )
-            print("[SFSpeechRecognizerBackend] Using input device UID: \(uid)")
-        }
-
-        let inputNode = engine.inputNode
-        // Use the hardware's native sample rate but force float32 so that
-        // floatChannelData is always non-nil in the tap callback.
-        // inputFormat(forBus:) reflects hardware and is available before start().
-        let hwRate = inputNode.inputFormat(forBus: 0).sampleRate
-        let tapRate = hwRate > 0 ? hwRate : 44100.0
-        let tapFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32,
-                                      sampleRate: tapRate, channels: 1,
-                                      interleaved: false)!
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: tapFormat) { [weak self] buffer, _ in
-            guard let self, !self.isStopping else { return }
-            self.recognitionRequest?.append(buffer)
-
-            // Emit audio level for waveform indicator + drive silence-based VAD
-            guard let channelData = buffer.floatChannelData else { return }
-            let count = Int(buffer.frameLength)
-            let ptr = UnsafeBufferPointer(start: channelData[0], count: count)
-            let rms = Self.computeRMS(ptr)
-            let threshold = self.silenceThreshold
-            DispatchQueue.main.async {
-                self.onAudioLevel?(rms, rms >= threshold)
-                self.updateVAD(rms: rms, threshold: threshold)
+        // Initial engine setup uses setupAudioEngine (no audioUnit force-init).
+        // On macOS 26, the first engine after app launch consistently gets zero
+        // audio data from TCC. DO NOT access inputNode.audioUnit here — it taints
+        // the CoreAudio session and prevents recovery from working. Instead, let
+        // this engine fail, and the 1-second health check triggers recovery with
+        // a fresh engine (which uses audioUnit force-init and works because TCC
+        // has had time to settle).
+        let deviceUID = inputDeviceUID
+        let silThreshold = silenceThreshold
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { cont.resume(); return }
+                do {
+                    try self.setupAudioEngine(deviceUID: deviceUID, silenceThreshold: silThreshold)
+                    cont.resume()
+                } catch {
+                    cont.resume(throwing: error)
+                }
             }
         }
-
-        // Start engine after tap is installed — starting before any tap is
-        // configured can throw an ObjC exception (not catchable via Swift try).
-        try engine.start()
-        audioEngine = engine
-        isRunning = true
 
         // Allow audio hardware to settle before beginning recognition.
         try await Task.sleep(nanoseconds: 200_000_000)  // 200ms
@@ -123,12 +113,26 @@ final class SFSpeechRecognizerBackend: VoiceTranscriptionBackend {
         guard !isStopping else { return }
         startNewRecognitionSession()
         print("[SFSpeechRecognizerBackend] Started")
+
+        // Health check after 1 second — triggers fast recovery if no real audio.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            guard let self, self.isRunning else { return }
+            let msg = "Audio health: \(self.diagBufferCount) buffers, peakRMS=\(String(format: "%.6f", self.diagPeakRMS)), threshold=\(self.silenceThreshold)"
+            print("[SFSpeechRecognizerBackend] \(msg)")
+            self.onDiagnostic?(msg)
+            if self.diagBufferCount == 0 || self.diagPeakRMS < 0.0001 {
+                self.onDiagnostic?("Warming up mic — restarting audio engine")
+                self.attemptAudioRecovery()
+            }
+        }
     }
 
     func stop() {
         isStopping = true
         cancelSilenceTimer()
+        cancelEndAudioTimeout()
         speechDetected = false
+        lastPartialText = ""
         recognitionRequest?.endAudio()
         recognitionTask?.cancel()
         recognitionTask = nil
@@ -144,19 +148,121 @@ final class SFSpeechRecognizerBackend: VoiceTranscriptionBackend {
     func flushAudio() {
         // Cancel VAD timer — the explicit flush supersedes silence detection.
         cancelSilenceTimer()
+        cancelEndAudioTimeout()
         speechDetected = false
+
+        // Capture any partial text before killing the session — SFSpeechRecognizer
+        // cancels the old task when a new one starts, so isFinal may never fire.
+        // Deliver the last partial as a final transcription to avoid losing speech.
+        let pendingText = lastPartialText
+        lastPartialText = ""
+
         // Invalidate the current session so its restart callback won't fire a
-        // duplicate session, but do NOT cancel — let endAudio() trigger isFinal
-        // so any in-progress speech still reaches onTranscription.
+        // duplicate session.
         currentSessionID += 1
         recognitionRequest?.endAudio()
+        recognitionTask?.cancel()
         recognitionTask = nil
         recognitionRequest = nil
         startNewRecognitionSession()
+
+        // Deliver captured partial text as final (after starting new session so
+        // the pipeline is ready for the next utterance).
+        if !pendingText.isEmpty {
+            print("[SFSpeechRecognizerBackend] Flush — delivering pending partial as final: \(pendingText)")
+            DispatchQueue.main.async { self.onTranscription?(pendingText) }
+        }
     }
 
     func trimAudio(keepLastSeconds: Double) {
         // Not applicable — SFSpeechRecognizer manages its own audio window
+    }
+
+    // MARK: - Audio Engine Setup (must run on main thread)
+
+    /// Creates, configures, and starts the AVAudioEngine with an input tap.
+    /// Must be called on the main thread — tap callbacks fail to fire when
+    /// the engine is set up on Swift's cooperative thread pool (macOS 26).
+    private func setupAudioEngine(deviceUID: String?, silenceThreshold: Float) throws {
+        let engine = AVAudioEngine()
+        let inputNode = engine.inputNode
+
+        // Resolve the device UID — skip forcing if it's already the system default.
+        let resolvedUID: String? = {
+            if let uid = deviceUID, !uid.isEmpty { return uid }
+            return nil
+        }()
+        if let uid = resolvedUID, let deviceID = Self.audioDeviceID(forUID: uid) {
+            if Self.isDefaultInputDevice(deviceID) {
+                print("[SFSpeechRecognizerBackend] Device \(uid) (id=\(deviceID)) is already system default — skipping explicit set")
+            } else if let au = inputNode.audioUnit {
+                var devID = deviceID
+                let status = AudioUnitSetProperty(
+                    au,
+                    kAudioOutputUnitProperty_CurrentDevice,
+                    kAudioUnitScope_Global,
+                    0,
+                    &devID,
+                    UInt32(MemoryLayout<AudioDeviceID>.size)
+                )
+                print("[SFSpeechRecognizerBackend] Set input device UID: \(uid), deviceID: \(deviceID), status: \(status)")
+            } else {
+                print("[SFSpeechRecognizerBackend] WARNING: inputNode.audioUnit is nil — cannot set device \(uid)")
+            }
+        } else {
+            print("[SFSpeechRecognizerBackend] Using system default input device")
+        }
+
+        // Query actual device for diagnostics
+        let actualDeviceName = Self.currentInputDeviceName(for: inputNode)
+        print("[SFSpeechRecognizerBackend] Actual input device: \(actualDeviceName)")
+
+        // Check system input volume for the device
+        let inputVolume = Self.systemInputVolume(for: inputNode)
+        print("[SFSpeechRecognizerBackend] System input volume: \(inputVolume)")
+        if inputVolume.contains("vol=0.00") || inputVolume.contains("MUTED") {
+            onDiagnostic?("WARNING: System input volume is 0 — mic may be muted in System Settings")
+        }
+
+        let nativeFormat = inputNode.outputFormat(forBus: 0)
+        let hwRate = nativeFormat.sampleRate
+        let hwChannels = nativeFormat.channelCount
+        print("[SFSpeechRecognizerBackend] Format: rate=\(hwRate) ch=\(hwChannels) fmt=\(nativeFormat.commonFormat.rawValue)")
+
+        let tapFormat: AVAudioFormat
+        if nativeFormat.commonFormat == .pcmFormatFloat32 && hwRate > 0 && hwChannels > 0 {
+            tapFormat = nativeFormat
+        } else {
+            let fallbackRate = hwRate > 0 ? hwRate : 48000.0
+            tapFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32,
+                                      sampleRate: fallbackRate,
+                                      channels: max(hwChannels, 1),
+                                      interleaved: false)!
+            print("[SFSpeechRecognizerBackend] Using fallback format: rate=\(fallbackRate) ch=\(max(hwChannels, 1))")
+        }
+        diagBufferCount = 0
+        diagPeakRMS = 0
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: tapFormat) { [weak self] buffer, _ in
+            guard let self, !self.isStopping else { return }
+            self.diagBufferCount += 1
+            self.recognitionRequest?.append(buffer)
+
+            guard let channelData = buffer.floatChannelData else { return }
+            let count = Int(buffer.frameLength)
+            let ptr = UnsafeBufferPointer(start: channelData[0], count: count)
+            let rms = Self.computeRMS(ptr)
+            if rms > self.diagPeakRMS { self.diagPeakRMS = rms }
+            let threshold = silenceThreshold
+            DispatchQueue.main.async {
+                self.onAudioLevel?(rms, rms >= threshold)
+                self.updateVAD(rms: rms, threshold: threshold)
+            }
+        }
+
+        try engine.start()
+        audioEngine = engine
+        isRunning = true
+        print("[SFSpeechRecognizerBackend] Engine started on main thread")
     }
 
     // MARK: - Silence VAD
@@ -182,11 +288,14 @@ final class SFSpeechRecognizerBackend: VoiceTranscriptionBackend {
             print("[SFSpeechRecognizerBackend] Silence VAD — finalizing utterance")
             self.silenceTimer = nil
             self.speechDetected = false
-            self.currentSessionID += 1
+            // Just call endAudio() — do NOT start a new session here.
+            // SFSpeechRecognizer cancels the old task when a new one starts,
+            // which would prevent isFinal from being delivered.
+            // The isFinal callback (or error callback) will restart the session.
+            let sid = self.currentSessionID
             self.recognitionRequest?.endAudio()
-            self.recognitionTask = nil
-            self.recognitionRequest = nil
-            self.startNewRecognitionSession()
+            // Safety net: if the callback never fires, deliver text anyway.
+            self.startEndAudioTimeout(sessionID: sid)
         }
         timer.resume()
         silenceTimer = timer
@@ -195,6 +304,37 @@ final class SFSpeechRecognizerBackend: VoiceTranscriptionBackend {
     private func cancelSilenceTimer() {
         silenceTimer?.cancel()
         silenceTimer = nil
+    }
+
+    private func cancelEndAudioTimeout() {
+        endAudioTimeout?.cancel()
+        endAudioTimeout = nil
+    }
+
+    /// Start a safety timer after endAudio(). If the recognition callback never
+    /// fires (isFinal or error), deliver lastPartialText and restart the session.
+    private func startEndAudioTimeout(sessionID: Int) {
+        cancelEndAudioTimeout()
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + endAudioTimeoutDuration)
+        timer.setEventHandler { [weak self] in
+            guard let self, !self.isStopping, self.currentSessionID == sessionID else { return }
+            let pending = self.lastPartialText
+            self.lastPartialText = ""
+            self.endAudioTimeout = nil
+            print("[SFSpeechRecognizerBackend] endAudio timeout — callback never fired (session \(sessionID))")
+            if !pending.isEmpty {
+                print("[SFSpeechRecognizerBackend] Delivering pending partial as final via timeout: \(pending)")
+                self.onTranscription?(pending)
+            }
+            // Force-restart the session
+            self.recognitionTask?.cancel()
+            self.recognitionTask = nil
+            self.recognitionRequest = nil
+            self.startNewRecognitionSession()
+        }
+        timer.resume()
+        endAudioTimeout = timer
     }
 
     // MARK: - Recognition session management
@@ -220,7 +360,9 @@ final class SFSpeechRecognizerBackend: VoiceTranscriptionBackend {
                 guard !text.isEmpty else { return }
 
                 if result.isFinal {
+                    self.cancelEndAudioTimeout()
                     print("[SFSpeechRecognizerBackend] Final (session \(sessionID)): \(text)")
+                    self.lastPartialText = ""
                     // Always deliver final text regardless of session ID — a slot
                     // change (flushAudio) should not discard speech already spoken.
                     DispatchQueue.main.async { self.onTranscription?(text) }
@@ -232,6 +374,9 @@ final class SFSpeechRecognizerBackend: VoiceTranscriptionBackend {
                         self.startNewRecognitionSession()
                     }
                 } else {
+                    // Track partial text so flushAudio() can deliver it if the task
+                    // gets cancelled before isFinal fires.
+                    self.lastPartialText = text
                     print("[SFSpeechRecognizerBackend] Partial (session \(sessionID)): \(text)")
                     DispatchQueue.main.async { self.onPartialTranscription?(text) }
                 }
@@ -239,14 +384,28 @@ final class SFSpeechRecognizerBackend: VoiceTranscriptionBackend {
             }
 
             if let error {
+                self.cancelEndAudioTimeout()
                 let nsError = error as NSError
                 // 1110 = no speech, 203/301 = cancelled — all routine
-                let isRoutine = nsError.code == 1110 || nsError.code == 203 || nsError.code == 301
+                let isCancelled = nsError.code == 203 || nsError.code == 301
+                let isNoSpeech = nsError.code == 1110
+                let isRoutine = isCancelled || isNoSpeech
                 if !isRoutine {
                     print("[SFSpeechRecognizerBackend] Error \(nsError.code) (session \(sessionID)): \(error)")
                 } else {
-                    print("[SFSpeechRecognizerBackend] Routine end (code \(nsError.code), session \(sessionID)), restarting")
+                    print("[SFSpeechRecognizerBackend] Routine end (code \(nsError.code), session \(sessionID))")
                 }
+
+                // If the task was cancelled (e.g. by silence VAD endAudio or system)
+                // and we had partial text, deliver it as a final transcription.
+                // This prevents speech from being silently dropped.
+                let pending = self.lastPartialText
+                self.lastPartialText = ""
+                if !pending.isEmpty && self.currentSessionID == sessionID {
+                    print("[SFSpeechRecognizerBackend] Delivering pending partial as final on task end: \(pending)")
+                    DispatchQueue.main.async { self.onTranscription?(pending) }
+                }
+
                 DispatchQueue.main.async {
                     guard !self.isStopping, self.currentSessionID == sessionID else { return }
                     self.recognitionRequest = nil
@@ -312,6 +471,163 @@ final class SFSpeechRecognizerBackend: VoiceTranscriptionBackend {
             return uid
         }
         return nil
+    }
+
+    /// Restart the audio engine without forcing a specific device.
+    /// Called automatically if zero buffers are received after 3 seconds.
+    private func attemptAudioRecovery() {
+        guard isRunning, !isStopping else { return }
+        print("[SFSpeechRecognizerBackend] Auto-recovery: restarting engine with system default device")
+
+        // Tear down current engine
+        recognitionRequest?.endAudio()
+        recognitionTask?.cancel()
+        recognitionTask = nil
+        recognitionRequest = nil
+        audioEngine?.inputNode.removeTap(onBus: 0)
+        audioEngine?.stop()
+
+        // Rebuild with system default (no device forcing)
+        let engine = AVAudioEngine()
+        let inputNode = engine.inputNode
+        let _ = inputNode.audioUnit  // Force initialization
+
+        let recoveryNative = inputNode.outputFormat(forBus: 0)
+        print("[SFSpeechRecognizerBackend] Recovery format: rate=\(recoveryNative.sampleRate) ch=\(recoveryNative.channelCount)")
+        let recoveryFormat: AVAudioFormat
+        if recoveryNative.commonFormat == .pcmFormatFloat32 && recoveryNative.sampleRate > 0 && recoveryNative.channelCount > 0 {
+            recoveryFormat = recoveryNative
+        } else {
+            recoveryFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48000, channels: 1, interleaved: false)!
+        }
+        diagBufferCount = 0
+        diagPeakRMS = 0
+
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recoveryFormat) { [weak self] buffer, _ in
+            guard let self, !self.isStopping else { return }
+            self.diagBufferCount += 1
+            self.recognitionRequest?.append(buffer)
+
+            guard let channelData = buffer.floatChannelData else { return }
+            let count = Int(buffer.frameLength)
+            let ptr = UnsafeBufferPointer(start: channelData[0], count: count)
+            let rms = Self.computeRMS(ptr)
+            if rms > self.diagPeakRMS { self.diagPeakRMS = rms }
+            let threshold = self.silenceThreshold
+            DispatchQueue.main.async {
+                self.onAudioLevel?(rms, rms >= threshold)
+                self.updateVAD(rms: rms, threshold: threshold)
+            }
+        }
+
+        do {
+            try engine.start()
+            audioEngine = engine
+            print("[SFSpeechRecognizerBackend] Recovery engine started")
+            startNewRecognitionSession()
+            onDiagnostic?("Audio recovered — engine restarted with system default")
+
+            // Verify recovery after 2 seconds
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+                guard let self, self.isRunning else { return }
+                if self.diagBufferCount == 0 {
+                    self.onDiagnostic?("CRITICAL: Still no audio after recovery. Check System Settings > Privacy > Microphone.")
+                } else {
+                    self.onDiagnostic?("Recovery confirmed: \(self.diagBufferCount) buffers, peakRMS=\(String(format: "%.6f", self.diagPeakRMS))")
+                }
+            }
+        } catch {
+            print("[SFSpeechRecognizerBackend] Recovery failed: \(error)")
+            onDiagnostic?("Audio recovery failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Check if a CoreAudio device ID matches the system's current default input device.
+    private static func isDefaultInputDevice(_ deviceID: AudioDeviceID) -> Bool {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var defaultID: AudioDeviceID = 0
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address,
+            0,
+            nil,
+            &size,
+            &defaultID
+        )
+        guard status == noErr else { return false }
+        return defaultID == deviceID
+    }
+
+    /// Query the name of the audio device currently assigned to an input node's audio unit.
+    private static func currentInputDeviceName(for inputNode: AVAudioInputNode) -> String {
+        guard let au = inputNode.audioUnit else { return "(no audio unit)" }
+        var deviceID: AudioDeviceID = 0
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioUnitGetProperty(
+            au,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &deviceID,
+            &size
+        )
+        guard status == noErr, deviceID != 0 else { return "(unknown, status=\(status))" }
+        // Get device name
+        var nameAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioObjectPropertyName,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var nameRef: CFString? = nil
+        var nameSize = UInt32(MemoryLayout<CFString?>.size)
+        guard AudioObjectGetPropertyData(deviceID, &nameAddress, 0, nil, &nameSize, &nameRef) == noErr,
+              let name = nameRef as String? else { return "(id=\(deviceID), name unknown)" }
+        return "\(name) (id=\(deviceID))"
+    }
+
+    /// Query the system input volume for the device used by the given input node.
+    private static func systemInputVolume(for inputNode: AVAudioInputNode) -> String {
+        guard let au = inputNode.audioUnit else { return "(no audio unit)" }
+        var deviceID: AudioDeviceID = 0
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioUnitGetProperty(
+            au,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &deviceID,
+            &size
+        )
+        guard status == noErr, deviceID != 0 else { return "(unknown device)" }
+
+        // Query input volume
+        var volumeAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyVolumeScalar,
+            mScope: kAudioDevicePropertyScopeInput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var volume: Float32 = -1
+        var volumeSize = UInt32(MemoryLayout<Float32>.size)
+        let volStatus = AudioObjectGetPropertyData(deviceID, &volumeAddress, 0, nil, &volumeSize, &volume)
+
+        // Query mute state
+        var muteAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyMute,
+            mScope: kAudioDevicePropertyScopeInput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var mute: UInt32 = 0
+        var muteSize = UInt32(MemoryLayout<UInt32>.size)
+        let muteStatus = AudioObjectGetPropertyData(deviceID, &muteAddress, 0, nil, &muteSize, &mute)
+
+        let volStr = volStatus == noErr ? String(format: "%.2f", volume) : "n/a(err=\(volStatus))"
+        let muteStr = muteStatus == noErr ? (mute != 0 ? "MUTED" : "unmuted") : "n/a"
+        return "vol=\(volStr) mute=\(muteStr) deviceID=\(deviceID)"
     }
 
     private static func audioDeviceID(forUID uid: String) -> AudioDeviceID? {

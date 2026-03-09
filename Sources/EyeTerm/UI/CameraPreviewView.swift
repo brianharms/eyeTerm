@@ -89,7 +89,8 @@ struct CameraPreviewView: View {
                     }
 
                     // Wink indicators — positioned near the winking eye
-                    if let wink = appState.lastWinkDisplay,
+                    if appState.showWinkOverlay,
+                       let wink = appState.lastWinkDisplay,
                        let face = appState.faceObservationData {
                         WinkEyeLabel(
                             text: wink,
@@ -132,6 +133,15 @@ struct CameraPreviewView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .help("Toggle eye/face mesh visualization")
+
+                Toggle(isOn: $appState.showWinkOverlay) {
+                    Image(systemName: appState.showWinkOverlay ? "hand.raised.fill" : "hand.raised.slash")
+                        .font(.system(size: 12, weight: .medium))
+                }
+                .toggleStyle(.button)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Toggle wink visualization")
 
                 // Voice: start/stop voice backend directly, same as menu bar "Start Voice"
                 Toggle(isOn: Binding(

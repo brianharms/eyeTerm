@@ -901,3 +901,54 @@ Comprehensive testing audit of the entire eyeTerm app. Find every bug, UI incons
 - Review audit-report.html in browser for remaining findings
 - Prioritize remaining P1 bugs: isEyeTermWindowKey(), MediaPipe subprocess cleanup, WhisperKit async race
 - Consider UX improvements: tracking lost indicator, FPS counter, global keyboard shortcuts
+
+---
+
+## Session — 2026-03-08 20:31
+
+### Goal
+Multiple fixes: (1) Fix mic producing zero audio data, (2) disable diagnostics by default with system tray toggle, (3) fix lightning bolt not re-launching terminals, (4) fix voice re-enabling when cycling overlay mode after manually stopping, (5) add wink visualization toggle in camera preview.
+
+### Accomplished
+- **Zero audio fix (v1.29–1.32)**: macOS 26 TCC silently zeros mic data for unsigned binaries. Fixed by building with ad-hoc code signing (`CODE_SIGN_IDENTITY="-"`) instead of `CODE_SIGNING_ALLOWED=NO`. Added 1-second health check in `SFSpeechRecognizerBackend` that triggers auto-recovery with fresh AVAudioEngine.
+- **Diagnostics toggle (v1.33)**: `diagnosticsEnabled` defaults to `false` in AppState. Added `addDiagnostic()` method that gates on the flag. Added stethoscope toggle button in MenuBarView utilities section. Changed all `[DIAG]` errors in AppCoordinator to use `addDiagnostic()`.
+- **Lightning bolt fix (v1.34)**: Removed `if !appState.isTerminalSetup` guard from `startAll()` so terminals always re-setup.
+- **Voice re-enable fix (v1.35)**: `stopVoice()` now sets `appState.isVoiceEnabled = false`. `startVoice()` sets `isVoiceEnabled = true` on success. `setupTerminals()` captures `voiceWasRunning` before calling `stopVoice()` to properly restart voice after terminal setup.
+- **Wink visualization toggle (v1.38)**: Added hand icon toggle button in camera preview toolbar. `showWinkOverlay` default changed to `true`. Both camera preview wink label and full-screen overlay wink flash gated on `showWinkOverlay`.
+- **Terminal setup logging (v1.39)**: Added print statements to `setupTerminals()` for debugging repeated adopt failures.
+- **iCloud xattr fix**: Added `xattr -cr` to post-compile script in `project.yml` to strip iCloud extended attributes that break codesign.
+
+### In Progress / Incomplete
+- **Terminal adopt failing on repeated calls**: User reports lightning bolt stops working after multiple presses. Added logging in v1.39 but haven't yet seen the logs to diagnose. Root cause unknown — could be AppleScript timing, window enumeration issues, or focus-related.
+- **Initial AVAudioEngine 0-buffer issue**: First engine after app launch sometimes gets zero data on macOS 26. Recovery handles it within 1 second, but the root cause (TCC settling) is not fixable.
+
+### Key Decisions
+- Ad-hoc signing (`CODE_SIGN_IDENTITY="-"`) is required for TCC mic access on macOS 26 — `CODE_SIGNING_ALLOWED=NO` produces unsigned binaries that get silently zeroed
+- DO NOT add `inputNode.audioUnit` access to initial `setupAudioEngine()` — it taints the CoreAudio session and breaks recovery
+- `isVoiceEnabled` is now the authoritative flag for whether voice should auto-restart. Manual stop sets it to false, manual start and Launch All set it to true.
+- Wink visualizations show whenever `showWinkOverlay` is true, regardless of overlay mode — the overlay window stays hidden when overlay is off (winks only show in camera preview in that case)
+
+### Files Changed
+- `Sources/EyeTerm/App/AppCoordinator.swift` — voice enable/disable logic, diagnostics, terminal setup logging, wink overlay gating
+- `Sources/EyeTerm/App/AppState.swift` — `diagnosticsEnabled`, `addDiagnostic()`, `showWinkOverlay` default changed to `true`
+- `Sources/EyeTerm/App/AppVersion.swift` — incremented through 1.29 → 1.39
+- `Sources/EyeTerm/Voice/SFSpeechRecognizerBackend.swift` — TCC diagnostic check, health check timing, recovery logic
+- `Sources/EyeTerm/UI/MenuBarView.swift` — diagnostics toggle button
+- `Sources/EyeTerm/UI/CameraPreviewView.swift` — wink visualization toggle button, `showWinkOverlay` gate on wink label
+- `Sources/EyeTerm/UI/EyeOverlayView.swift` — `showWinkOverlay` gate on wink flash
+- `Sources/EyeTerm/EyeTracking/MediaPipeBackend.swift` — (modified in earlier part of session)
+- `project.yml` — `xattr -cr` post-compile script
+- `SESSION_LOG.md` — this entry
+
+### Known Issues
+- Terminal adopt may fail on repeated lightning bolt presses — needs log inspection to diagnose
+- Initial AVAudioEngine sometimes gets 0 buffers on first launch (recovery handles within 1s)
+- `CLAUDE.md` still references `CODE_SIGNING_ALLOWED=NO` in build instructions — should be updated to use `CODE_SIGN_IDENTITY="-"`
+
+### Running Services
+- eyeTerm v1.39 deployed at `/Applications/eyeTerm.app` and running
+
+### Next Steps
+- Have user reproduce the terminal adopt failure and check console logs for `[AppCoordinator] setupTerminals:` messages to identify root cause
+- Update `CLAUDE.md` build instructions to use `CODE_SIGN_IDENTITY="-"` instead of `CODE_SIGNING_ALLOWED=NO`
+- Consider whether the full-screen overlay should remain visible (but transparent) when overlay mode is off + eye tracking is active, to allow wink flashes on the main screen even without the camera preview open

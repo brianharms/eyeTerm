@@ -143,6 +143,12 @@ final class AppCoordinator {
             self.appState.voiceModelState = state
         }
 
+        if let sfBackend = activeVoiceBackend as? SFSpeechRecognizerBackend {
+            sfBackend.onDiagnostic = { [weak self] msg in
+                self?.appState.addDiagnostic(msg)
+            }
+        }
+
         activeVoiceBackend.onPartialTranscription = { [weak self] text in
             guard let self else { return }
             let normalized = self.commandParser.normalizeOnly(text)
@@ -162,6 +168,7 @@ final class AppCoordinator {
 
         activeVoiceBackend.onTranscription = { [weak self] text in
             guard let self else { return }
+            self.appState.addDiagnostic("heard: \"\(text)\" | focused=\(self.appState.focusedSlot.map{String($0)} ?? "nil") active=\(self.appState.activeSlot.map{String($0)} ?? "nil") setup=\(self.terminalManager.isSetup) eyeTermKey=\(self.isEyeTermWindowKey()) winActions=\(self.appState.windowActionsEnabled)")
             self.partialDebounceWork?.cancel()
             self.partialDebounceWork = nil
             self.partialTerminalTask?.cancel()
@@ -369,7 +376,7 @@ final class AppCoordinator {
             return
         }
 
-        print("[AppCoordinator] Sending to slot \(slotIndex + 1)")
+        appState.addDiagnostic("sending: \"\(cleaned)\" → slot \(slotIndex)")
         Task {
             for command in commands {
                 do {
@@ -621,14 +628,16 @@ final class AppCoordinator {
 
         appState.statusMessage = "Starting..."
 
-        if !appState.isTerminalSetup {
-            await setupTerminals()
-        }
+        await setupTerminals()
 
         if !appState.isEyeTrackingActive {
+            print("[AppCoordinator] startAll: eye tracking not active, starting...")
             startEyeTracking()
+        } else {
+            print("[AppCoordinator] startAll: eye tracking already active, skipping")
         }
 
+        print("[AppCoordinator] startAll: starting voice...")
         await startVoice()
 
         updateStatus()
@@ -651,10 +660,12 @@ final class AppCoordinator {
         // Always lock gaze focusing during terminal setup so dwell doesn't fire at iTerm2 windows
         // while they're being launched/positioned. Voice is only stopped if blockInteractionDuringSetup.
         appState.gazeActivationLocked = true
-        if appState.blockInteractionDuringSetup && activeVoiceBackend.isRunning { stopVoice() }
+        let voiceWasRunning = activeVoiceBackend.isRunning
+        if appState.blockInteractionDuringSetup && voiceWasRunning { stopVoice() }
         appState.statusMessage = "Eye focusing paused — launching terminals…"
 
         do {
+            print("[AppCoordinator] setupTerminals: mode=\(appState.terminalSetupMode.rawValue)")
             switch appState.terminalSetupMode {
             case .launchNew:
                 try await terminalManager.setupTerminals(cols: appState.terminalGridColumns, rows: appState.terminalGridRows, appState: appState, screen: selectedScreen())
@@ -663,13 +674,15 @@ final class AppCoordinator {
             case .chooseProjects:
                 try await terminalManager.setupProjectTerminals(projectURLs: appState.selectedProjectFolders, initialPrompt: appState.claudeInitialPrompt, initialPromptStagger: appState.claudeInitialPromptStagger, renameToProjectName: appState.renameWindowsToProjectName, appState: appState, screen: selectedScreen())
             }
+            print("[AppCoordinator] setupTerminals: success, slots=\(appState.terminalSlots.count)")
             appState.isTerminalSetup = true
         } catch {
+            print("[AppCoordinator] setupTerminals: FAILED — \(error)")
             appState.addError("Terminal setup failed: \(error.localizedDescription)")
         }
 
         appState.gazeActivationLocked = false
-        if appState.blockInteractionDuringSetup && appState.isVoiceEnabled { Task { await startVoice() } }
+        if appState.blockInteractionDuringSetup && voiceWasRunning { Task { await startVoice() } }
         // Ensure overlay is visible if the user enabled it before terminals were ready.
         updateOverlayVisibility()
         updateStatus()
@@ -685,14 +698,18 @@ final class AppCoordinator {
         if let mp = activeBackend as? MediaPipeBackend {
             applyMediaPipePython()
             mp.selectedCameraDeviceID = appState.selectedCameraDeviceID
+            print("[AppCoordinator] startEyeTracking: MediaPipe backend, camera=\(appState.selectedCameraDeviceID)")
         } else if let tracker = activeBackend as? EyeTermTracker {
             tracker.selectedCaptureDevice = Self.resolveCamera(uniqueID: appState.selectedCameraDeviceID)
+            print("[AppCoordinator] startEyeTracking: AppleVision backend")
         }
         do {
             try activeBackend.start()
             appState.isEyeTrackingActive = true
+            print("[AppCoordinator] startEyeTracking: SUCCESS, isRunning=\(activeBackend.isRunning)")
         } catch {
             appState.addError("Eye tracking failed: \(error.localizedDescription)")
+            print("[AppCoordinator] startEyeTracking: FAILED — \(error)")
         }
         updateStatus()
 
@@ -719,9 +736,13 @@ final class AppCoordinator {
     // MARK: - Voice
 
     func startVoice() async {
-        guard !activeVoiceBackend.isRunning else { return }
+        guard !activeVoiceBackend.isRunning else {
+            print("[AppCoordinator] startVoice: already running, skipping")
+            return
+        }
         activeVoiceBackend.modelName = appState.whisperModel
         activeVoiceBackend.inputDeviceUID = appState.selectedMicDeviceUID.isEmpty ? nil : appState.selectedMicDeviceUID
+        print("[AppCoordinator] startVoice: mic=\(appState.selectedMicDeviceUID.isEmpty ? "(system default)" : appState.selectedMicDeviceUID) backend=\(appState.voiceBackend.rawValue)")
         commandParser.enableNormalization = appState.enableTextNormalization
         commandParser.executeKeyword = appState.executeKeyword
         refreshMicList()
@@ -729,6 +750,8 @@ final class AppCoordinator {
             try await activeVoiceBackend.start()
             await MainActor.run {
                 appState.isVoiceActive = true
+                appState.isVoiceEnabled = true
+                appState.addDiagnostic("Voice started: backend=\(appState.voiceBackend.rawValue) mic=\(appState.selectedMicDeviceUID.isEmpty ? "default" : appState.selectedMicDeviceUID) eyeActive=\(appState.isEyeTrackingActive) termSetup=\(appState.isTerminalSetup)")
                 showWaveformPanel()
                 updateStatus()
             }
@@ -756,6 +779,7 @@ final class AppCoordinator {
     func stopVoice() {
         activeVoiceBackend.stop()
         appState.isVoiceActive = false
+        appState.isVoiceEnabled = false
         dismissWaveformPanel()
         updateStatus()
     }

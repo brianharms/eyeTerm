@@ -31,6 +31,8 @@ targets:
             mkdir -p "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Resources/Models/whisperkit"
             cp -Rn "${PROJECT_DIR}/Resources/Models/whisperkit/" "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Resources/Models/whisperkit/" 2>/dev/null || true
           fi
+          # Strip extended attributes that block codesign (iCloud adds these on Desktop)
+          xattr -cr "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app" 2>/dev/null || true
         name: Copy Resources
     preBuildScripts:
       - script: |

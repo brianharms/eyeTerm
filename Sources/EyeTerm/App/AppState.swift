@@ -93,7 +93,7 @@ final class AppState {
     var showDebugBackdrop: Bool = false
     var keepOverlayOnTop: Bool = true
     var showDictationDisplay: Bool = false
-    var showWinkOverlay: Bool = false
+    var showWinkOverlay: Bool = true
     var showCommandFlash: Bool = false
 
     // MARK: - Wink / Command Flash Display (not persisted beyond session)
@@ -188,6 +188,7 @@ final class AppState {
 
     // MARK: - Status
     var statusMessage = "Idle"
+    var diagnosticsEnabled = false
     var errors: [String] = []
 
     func addError(_ message: String) {
@@ -195,6 +196,11 @@ final class AppState {
         if errors.count > 20 {
             errors.removeFirst()
         }
+    }
+
+    func addDiagnostic(_ message: String) {
+        guard diagnosticsEnabled else { return }
+        addError("[DIAG] \(message)")
     }
 
     func clearErrors() {

@@ -179,6 +179,20 @@ struct MenuBarView: View {
                     Label("Enable Permissions", systemImage: "lock.shield")
                 }
                 .buttonStyle(CompactMenuButtonStyle())
+
+                Button {
+                    appState.diagnosticsEnabled.toggle()
+                    if appState.diagnosticsEnabled {
+                        appState.addError("[DIAG] Diagnostics enabled")
+                    }
+                } label: {
+                    Label(
+                        appState.diagnosticsEnabled ? "Diagnostics On" : "Diagnostics",
+                        systemImage: appState.diagnosticsEnabled ? "stethoscope.circle.fill" : "stethoscope"
+                    )
+                    .foregroundStyle(appState.diagnosticsEnabled ? .green : .primary)
+                }
+                .buttonStyle(CompactMenuButtonStyle())
             }
             .font(.caption)
 
@@ -188,10 +202,7 @@ struct MenuBarView: View {
 
             Button {
                 coordinator.stopAll()
-                Task {
-                    try? await coordinator.terminalManager.tearDown()
-                    NSApplication.shared.terminate(nil)
-                }
+                NSApplication.shared.terminate(nil)
             } label: {
                 Label("Quit", systemImage: "xmark.circle")
             }

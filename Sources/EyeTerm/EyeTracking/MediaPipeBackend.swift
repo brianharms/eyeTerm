@@ -110,15 +110,22 @@ final class MediaPipeBackend: EyeTrackingBackend {
         proc.standardOutput = pipe
         proc.standardError = stderrPipe
 
-        proc.terminationHandler = { [weak self] _ in
+        proc.terminationHandler = { [weak self] proc in
             DispatchQueue.main.async {
-                self?.isRunning = false
+                guard let self else { return }
+                let exitCode = proc.terminationStatus
+                self.isRunning = false
+                print("[MediaPipeBackend] Python process terminated (exit code \(exitCode))")
+                if exitCode != 0 {
+                    self.onError?("Python process exited unexpectedly (code \(exitCode))")
+                }
             }
         }
 
         do {
             try proc.run()
         } catch {
+            teardownPreviewSession()
             throw MediaPipeError.launchFailed(error)
         }
 
