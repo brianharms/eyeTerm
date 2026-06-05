@@ -1,0 +1,14 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect width="1024" height="1024" fill="#EAEAEA" style="fill:#EAEAEA;fill:color(display-p3 0.9161 0.9161 0.9161);fill-opacity:1;"/>
+<rect x="20.5" y="20.5" width="982" height="982" rx="177.5" fill="#161616" stroke="#161616" style="fill:#161616;fill:color(display-p3 0.0857 0.0857 0.0857);fill-opacity:1;stroke:#161616;stroke:color(display-p3 0.0857 0.0857 0.0857);stroke-opacity:1;" stroke-width="41"/>
+<ellipse cx="512" cy="512" rx="327" ry="209" fill="#EAEAEA" style="fill:#EAEAEA;fill:color(display-p3 0.9161 0.9161 0.9161);fill-opacity:1;"/>
+<rect x="139" y="139" width="69" height="68" rx="34" fill="#FF736A" style="fill:#FF736A;fill:color(display-p3 1.0000 0.4510 0.4157);fill-opacity:1;"/>
+<rect x="139.25" y="139.25" width="68.5" height="67.5" rx="33.75" stroke="black" stroke-opacity="0.1" style="stroke:black;stroke-opacity:0.1;" stroke-width="0.5"/>
+<rect x="254" y="139" width="68" height="68" rx="34" fill="#FEBC2E" style="fill:#FEBC2E;fill:color(display-p3 0.9961 0.7373 0.1804);fill-opacity:1;"/>
+<rect x="254.25" y="139.25" width="67.5" height="67.5" rx="33.75" stroke="black" stroke-opacity="0.1" style="stroke:black;stroke-opacity:0.1;" stroke-width="0.5"/>
+<rect x="366" y="139" width="70" height="68" rx="34" fill="#19C332" style="fill:#19C332;fill:color(display-p3 0.0980 0.7647 0.1961);fill-opacity:1;"/>
+<rect x="366.25" y="139.25" width="69.5" height="67.5" rx="33.75" stroke="black" stroke-opacity="0.1" style="stroke:black;stroke-opacity:0.1;" stroke-width="0.5"/>
+<circle cx="512" cy="512" r="134" fill="#0171E4" style="fill:#0171E4;fill:color(display-p3 0.0039 0.4431 0.8941);fill-opacity:1;"/>
+<rect x="370" y="369" width="142" height="142" fill="#EAEAEA" style="fill:#EAEAEA;fill:color(display-p3 0.9161 0.9161 0.9161);fill-opacity:1;"/>
+<path d="M512 268C645.074 268 774.627 349.237 876.795 496.484L885.821 509.481L886.222 510.059L885.815 510.631L869.926 533.04L869.924 533.043C767.681 676.102 639.922 754.942 509.54 754.942C508.068 755.017 506.593 755.017 505.121 754.942C373.315 752.919 246.08 670.484 146.749 522.937V522.936L138.171 510.238L137.789 509.672L138.178 509.11L146.905 496.486L146.906 496.484C249.075 349.236 378.926 268 512 268ZM512 314.819C398.542 314.819 286.332 383.894 194.688 510.135C283.106 635.315 392.062 705.24 503.119 707.778L505.747 707.825C620.313 709.385 734.752 639.351 829.005 509.827C737.363 383.815 625.455 314.819 512 314.819Z" fill="#161616" stroke="#161616" style="fill:#161616;fill:color(display-p3 0.0857 0.0857 0.0857);fill-opacity:1;stroke:#161616;stroke:color(display-p3 0.0857 0.0857 0.0857);stroke-opacity:1;" stroke-width="2"/>
+</svg>

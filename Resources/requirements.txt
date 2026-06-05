@@ -1,0 +1,5 @@
+# Python dependencies for the eyeTerm eye-tracking backend.
+# Install with:  pip install -r Resources/requirements.txt
+opencv-python>=4.8
+mediapipe>=0.10
+numpy>=1.24
